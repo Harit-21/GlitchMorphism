@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Builder Timer Notifier</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; max-width: 600px; }
+    input, button { padding: 8px; margin: 4px; }
+    .timer { border-bottom: 1px solid #ddd; padding: 10px; display: flex; justify-content: space-between; }
+    .ready { color: green; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Builder Timer Notifier</h1>
+  <div>
+    <input id="name" placeholder="Builder name (e.g. Builder 1)">
+    <input id="duration" placeholder="Duration (e.g. 1d2h30m or 90m)">
+    <button id="addBtn">Add Timer</button>
+  </div>
+
+  <div id="timersList"></div>
+
+  <script>
+    const API = "";  // Since frontend is served from same host, empty works
+
+    async function fetchTimers() {
+      const resp = await fetch(API + "/timers");
+      return await resp.json();
+    }
+
+    function parseDurationText(sec) {
+      if (sec <= 0) return "✅ READY";
+      let s = sec;
+      const d = Math.floor(s / 86400); s %= 86400;
+      const h = Math.floor(s / 3600); s %= 3600;
+      const m = Math.floor(s / 60);
+      const sec2 = s % 60;
+      let parts = [];
+      if (d) parts.push(d + "d");
+      parts.push(String(h).padStart(2, '0') + "h");
+      parts.push(String(m).padStart(2, '0') + "m");
+      parts.push(String(sec2).padStart(2, '0') + "s");
+      return parts.join(" ");
+    }
+
+    async function renderTimers() {
+      const timers = await fetchTimers();
+      const container = document.getElementById("timersList");
+      container.innerHTML = "";
+      timers.forEach(t => {
+        const row = document.createElement("div");
+        row.className = "timer";
+        const left = document.createElement("div");
+        left.innerHTML = `<strong>${t.name}</strong> <br> <small>Ends: ${t.end_time} UTC</small>`;
+        const right = document.createElement("div");
+        const rem = t.remaining_seconds;
+        if (rem <= 0) {
+          right.innerHTML = `<span class="ready">✅ READY</span> <button data-id=${t.id}>Remove</button>`;
+        } else {
+          right.innerHTML = `${parseDurationText(rem)} <button data-id=${t.id}>Remove</button>`;
+        }
+        row.appendChild(left);
+        row.appendChild(right);
+        container.appendChild(row);
+      });
+
+      // Attach delete handlers
+      container.querySelectorAll("button[data-id]").forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.getAttribute("data-id");
+          await fetch(API + "/timers/" + id, { method: "DELETE" });
+          renderTimers();
+        };
+      });
+    }
+
+    document.getElementById("addBtn").onclick = async () => {
+      const name = document.getElementById("name").value.trim() || "Builder";
+      const duration = document.getElementById("duration").value.trim();
+      if (!duration) {
+        alert("Enter a duration (e.g. 1d2h or 90m).");
+        return;
+      }
+      await fetch(API + "/timers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, duration })
+      });
+      document.getElementById("duration").value = "";
+      renderTimers();
+    };
+
+    // Initial render + periodic update
+    renderTimers();
+    setInterval(renderTimers, 5000);
+  </script>
+</body>
+</html>
