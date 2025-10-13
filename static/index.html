@@ -1,52 +1,85 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" >
 <head>
   <meta charset="UTF-8" />
   <title>Builder Timer Notifier</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 10px 2px #34d399; }
+      50% { box-shadow: 0 0 20px 6px #10b981; }
+    }
+    .animate-pulse-glow {
+      animation: pulse-glow 2s infinite;
+    }
+  </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-6">
-  <div class="max-w-4xl mx-auto">
+<body class="bg-gray-900 text-white min-h-screen p-6 flex flex-col items-center">
+
+  <div class="max-w-4xl w-full">
     <h1 class="text-4xl font-bold mb-8 text-center">⏱️ Builder Timers</h1>
 
     <!-- Timer Form -->
-    <form id="add-timer-form" class="bg-gray-800 p-4 rounded-lg shadow mb-10 grid grid-cols-1 sm:grid-cols-5 gap-3">
-      <input type="text" id="name" placeholder="Builder Name" required class="col-span-2 p-2 rounded text-black" />
-
-      <div class="flex gap-1">
-        <input type="number" id="days" min="0" placeholder="d" class="w-16 p-2 rounded text-black" />
-        <input type="number" id="hours" min="0" max="23" placeholder="h" class="w-16 p-2 rounded text-black" />
-        <input type="number" id="minutes" min="0" max="59" placeholder="m" class="w-16 p-2 rounded text-black" />
+    <form id="add-timer-form" class="bg-gray-800 p-5 rounded-lg shadow-lg mb-12 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end">
+      <div class="col-span-2">
+        <label for="name" class="block text-gray-300 mb-1 font-semibold">Builder Name</label>
+        <input type="text" id="name" placeholder="e.g. Furnace" required
+          class="w-full p-3 rounded-md text-black focus:outline-none focus:ring-2 focus:ring-green-500" autocomplete="off" />
       </div>
 
-      <button type="submit" class="bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition">Add</button>
+      <div class="flex col-span-3 gap-3 justify-between">
+        <div class="flex flex-col items-center">
+          <label for="days" class="text-gray-400 font-semibold mb-1 select-none">Days</label>
+          <input type="number" id="days" min="0" placeholder="0"
+            class="w-20 p-3 rounded-md text-black text-center focus:outline-none focus:ring-2 focus:ring-green-500" autocomplete="off" />
+        </div>
+        <div class="flex flex-col items-center">
+          <label for="hours" class="text-gray-400 font-semibold mb-1 select-none">Hours</label>
+          <input type="number" id="hours" min="0" max="23" placeholder="0"
+            class="w-20 p-3 rounded-md text-black text-center focus:outline-none focus:ring-2 focus:ring-green-500" autocomplete="off" />
+        </div>
+        <div class="flex flex-col items-center">
+          <label for="minutes" class="text-gray-400 font-semibold mb-1 select-none">Minutes</label>
+          <input type="number" id="minutes" min="0" max="59" placeholder="0"
+            class="w-20 p-3 rounded-md text-black text-center focus:outline-none focus:ring-2 focus:ring-green-500" autocomplete="off" />
+        </div>
+      </div>
+
+      <button type="submit"
+        class="col-span-1 bg-green-600 hover:bg-green-700 active:bg-green-800 transition rounded-md p-3 text-white font-bold shadow-lg select-none">
+        Add Timer
+      </button>
     </form>
 
     <!-- Timers -->
-    <div id="timers" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="timers" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
   </div>
 
 <script>
-  const apiBase = ''; // Use full URL if needed
+  const apiBase = ''; // Put backend URL here if needed
 
+  // Fetch timers from backend
   async function fetchTimers() {
     const res = await fetch(`${apiBase}/timers`);
     return res.ok ? await res.json() : [];
   }
 
+  // Add a new timer via backend
   async function addTimer(name, duration) {
     const res = await fetch(`${apiBase}/timers`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, duration})
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, duration }),
     });
     if (!res.ok) alert('Failed to add timer');
   }
 
+  // Delete timer by ID
   async function deleteTimer(id) {
     await fetch(`${apiBase}/timers/${id}`, { method: 'DELETE' });
   }
 
+  // Format remaining seconds nicely
   function formatRemaining(sec) {
     const d = Math.floor(sec / 86400);
     sec %= 86400;
@@ -57,31 +90,39 @@
     return `${d}d ${h}h ${m}m ${s}s`;
   }
 
+  // Render timers in grid with animations and highlight urgent ones
   function renderTimers(timers) {
     const container = document.getElementById('timers');
     container.innerHTML = '';
 
     if (timers.length === 0) {
-      container.innerHTML = '<p class="text-center text-gray-400">No active timers.</p>';
+      container.innerHTML = '<p class="text-center text-gray-400 text-lg mt-10">No active timers.</p>';
       return;
     }
 
     timers.forEach(timer => {
       const remaining = timer.remaining_seconds;
       const isDone = remaining <= 0;
+      const isUrgent = remaining > 0 && remaining <= 60; // less than 1 min left
+
       const bgColor = isDone ? 'bg-red-700' : 'bg-gray-800';
+      const textColor = isDone ? 'text-red-300' : 'text-gray-300';
 
       const div = document.createElement('div');
-      div.className = `${bgColor} p-4 rounded shadow flex justify-between items-start transition-all`;
+      div.className = `${bgColor} p-5 rounded-lg shadow-lg flex justify-between items-start transition-all duration-300 ease-in-out`;
+
+      if (isUrgent) {
+        div.classList.add('animate-pulse-glow');
+      }
 
       div.innerHTML = `
         <div>
-          <h2 class="font-bold text-xl mb-1">${timer.name}</h2>
-          <p class="text-sm ${isDone ? 'text-red-300' : 'text-gray-300'}">
+          <h2 class="font-bold text-xl mb-1 select-text">${timer.name}</h2>
+          <p class="${textColor} text-sm select-text">
             ${isDone ? '✅ Finished!' : formatRemaining(remaining)}
           </p>
         </div>
-        <button class="text-red-400 font-bold hover:text-red-600 transition">✖</button>
+        <button class="text-red-400 font-bold hover:text-red-600 transition select-none" title="Delete timer">✖</button>
       `;
 
       div.querySelector('button').onclick = async () => {
@@ -93,6 +134,7 @@
     });
   }
 
+  // Load timers and render UI
   async function loadAndRender() {
     const timers = await fetchTimers();
     renderTimers(timers);
@@ -102,7 +144,7 @@
   setInterval(loadAndRender, 1000);
   loadAndRender();
 
-  // Add timer handler
+  // Add timer form submission handler
   document.getElementById('add-timer-form').addEventListener('submit', async e => {
     e.preventDefault();
     const name = document.getElementById('name').value.trim();
@@ -119,7 +161,22 @@
     await addTimer(name, duration);
     e.target.reset();
     await loadAndRender();
+
+    // Focus builder name for fast consecutive entries
+    document.getElementById('name').focus();
   });
+
+  // Optional: auto-advance input focus when user types a valid number (for speed)
+  ['days', 'hours', 'minutes'].forEach((id, i, arr) => {
+    const input = document.getElementById(id);
+    input.addEventListener('input', () => {
+      if (input.value.length >= 2) { // assume 2 digits max for speed
+        const next = arr[i + 1];
+        if (next) document.getElementById(next).focus();
+      }
+    });
+  });
+
 </script>
 </body>
 </html>
