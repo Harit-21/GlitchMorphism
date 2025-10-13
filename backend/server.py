@@ -121,6 +121,10 @@ def send_telegram_message(text: str):
 
 # ========== API Endpoints ==========
 
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
 @app.on_event("startup")
 def on_startup():
     init_db()
