@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # ========== Configuration ==========
 
@@ -37,6 +38,11 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 # ========== Database Helpers ==========
+
+@app.get("/")
+def root():
+    return FileResponse("static/index.html")
+
 
 _db_lock = threading.Lock()
 
