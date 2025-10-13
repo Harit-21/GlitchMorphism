@@ -1,98 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Builder Timer Notifier</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; max-width: 600px; }
-    input, button { padding: 8px; margin: 4px; }
-    .timer { border-bottom: 1px solid #ddd; padding: 10px; display: flex; justify-content: space-between; }
-    .ready { color: green; font-weight: bold; }
-  </style>
+  <meta charset="UTF-8" />
+  <title>Builder Timer with Backend</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h1>Builder Timer Notifier</h1>
-  <div>
-    <input id="name" placeholder="Builder name (e.g. Builder 1)">
-    <input id="duration" placeholder="Duration (e.g. 1d2h30m or 90m)">
-    <button id="addBtn">Add Timer</button>
-  </div>
+<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center">
+  <h1 class="text-4xl font-bold mb-6">Builder Timers (Backend)</h1>
+  
+  <form id="add-timer-form" class="mb-6 flex gap-2">
+    <input type="text" id="name" placeholder="Builder Name" required class="p-2 rounded text-black" />
+    <input type="text" id="duration" placeholder="Duration e.g. 1d2h30m" required class="p-2 rounded text-black" />
+    <button type="submit" class="bg-green-600 px-4 rounded hover:bg-green-700">Add Timer</button>
+  </form>
 
-  <div id="timersList"></div>
+  <div id="timers" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-4xl"></div>
 
-  <script>
-    const API = "";  // Since frontend is served from same host, empty works
+<script>
+  const apiBase = ''; // If served on same origin; else put backend URL
 
-    async function fetchTimers() {
-      const resp = await fetch(API + "/timers");
-      return await resp.json();
+  async function fetchTimers() {
+    const res = await fetch(`${apiBase}/timers`);
+    if (!res.ok) return [];
+    return await res.json();
+  }
+
+  async function addTimer(name, duration) {
+    const res = await fetch(`${apiBase}/timers`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name, duration})
+    });
+    if (!res.ok) alert('Failed to add timer');
+  }
+
+  async function deleteTimer(id) {
+    await fetch(`${apiBase}/timers/${id}`, { method: 'DELETE' });
+  }
+
+  function formatRemaining(sec) {
+    const d = Math.floor(sec / 86400);
+    sec %= 86400;
+    const h = Math.floor(sec / 3600);
+    sec %= 3600;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${d}d ${h}h ${m}m ${s}s`;
+  }
+
+  function renderTimers(timers) {
+    const container = document.getElementById('timers');
+    container.innerHTML = '';
+    if (timers.length === 0) {
+      container.textContent = 'No active timers.';
+      return;
     }
+    timers.forEach(timer => {
+      const div = document.createElement('div');
+      div.className = 'bg-gray-800 p-4 rounded shadow flex justify-between items-center';
+      div.innerHTML = `
+        <div>
+          <h2 class="font-bold text-xl">${timer.name}</h2>
+          <p>${timer.remaining_seconds > 0 ? formatRemaining(timer.remaining_seconds) : 'Finished!'}</p>
+        </div>
+        <button class="text-red-500 font-bold hover:text-red-700">X</button>
+      `;
+      const btn = div.querySelector('button');
+      btn.onclick = async () => {
+        await deleteTimer(timer.id);
+        await loadAndRender();
+      };
+      container.appendChild(div);
+    });
+  }
 
-    function parseDurationText(sec) {
-      if (sec <= 0) return "✅ READY";
-      let s = sec;
-      const d = Math.floor(s / 86400); s %= 86400;
-      const h = Math.floor(s / 3600); s %= 3600;
-      const m = Math.floor(s / 60);
-      const sec2 = s % 60;
-      let parts = [];
-      if (d) parts.push(d + "d");
-      parts.push(String(h).padStart(2, '0') + "h");
-      parts.push(String(m).padStart(2, '0') + "m");
-      parts.push(String(sec2).padStart(2, '0') + "s");
-      return parts.join(" ");
-    }
+  async function loadAndRender() {
+    const timers = await fetchTimers();
+    renderTimers(timers);
+  }
 
-    async function renderTimers() {
-      const timers = await fetchTimers();
-      const container = document.getElementById("timersList");
-      container.innerHTML = "";
-      timers.forEach(t => {
-        const row = document.createElement("div");
-        row.className = "timer";
-        const left = document.createElement("div");
-        left.innerHTML = `<strong>${t.name}</strong> <br> <small>Ends: ${t.end_time} UTC</small>`;
-        const right = document.createElement("div");
-        const rem = t.remaining_seconds;
-        if (rem <= 0) {
-          right.innerHTML = `<span class="ready">✅ READY</span> <button data-id=${t.id}>Remove</button>`;
-        } else {
-          right.innerHTML = `${parseDurationText(rem)} <button data-id=${t.id}>Remove</button>`;
-        }
-        row.appendChild(left);
-        row.appendChild(right);
-        container.appendChild(row);
-      });
+  // Refresh timers every second
+  setInterval(loadAndRender, 1000);
 
-      // Attach delete handlers
-      container.querySelectorAll("button[data-id]").forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.getAttribute("data-id");
-          await fetch(API + "/timers/" + id, { method: "DELETE" });
-          renderTimers();
-        };
-      });
-    }
+  // Initial load
+  loadAndRender();
 
-    document.getElementById("addBtn").onclick = async () => {
-      const name = document.getElementById("name").value.trim() || "Builder";
-      const duration = document.getElementById("duration").value.trim();
-      if (!duration) {
-        alert("Enter a duration (e.g. 1d2h or 90m).");
-        return;
-      }
-      await fetch(API + "/timers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, duration })
-      });
-      document.getElementById("duration").value = "";
-      renderTimers();
-    };
-
-    // Initial render + periodic update
-    renderTimers();
-    setInterval(renderTimers, 5000);
-  </script>
+  // Add timer form
+  document.getElementById('add-timer-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = document.getElementById('name').value.trim();
+    const duration = document.getElementById('duration').value.trim();
+    if (!name || !duration) return alert('Enter name and duration!');
+    await addTimer(name, duration);
+    e.target.reset();
+    await loadAndRender();
+  });
+</script>
 </body>
 </html>
