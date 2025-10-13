@@ -175,7 +175,8 @@ def background_checker():
             for (tid, name, end_time_str, notified) in rows:
                 end = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
                 if now >= end:
-                    msg = f"🔔 Builder ready: {name} (timer ended at {end_time_str} UTC)"
+                    # msg = f"🔔 Builder ready: {name} (timer ended at {end_time_str} UTC)"
+                    msg = f"⏰ '{name}' done!"
                     sent = send_telegram_message(msg)
                     if sent:
                         print("Telegram sent for", name)
