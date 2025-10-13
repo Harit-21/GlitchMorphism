@@ -2,27 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Builder Timer with Backend</title>
+  <title>Builder Timer Notifier</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center">
-  <h1 class="text-4xl font-bold mb-6">Builder Timers (Backend)</h1>
-  
-  <form id="add-timer-form" class="mb-6 flex gap-2">
-    <input type="text" id="name" placeholder="Builder Name" required class="p-2 rounded text-black" />
-    <input type="text" id="duration" placeholder="Duration e.g. 1d2h30m" required class="p-2 rounded text-black" />
-    <button type="submit" class="bg-green-600 px-4 rounded hover:bg-green-700">Add Timer</button>
-  </form>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-4xl font-bold mb-8 text-center">⏱️ Builder Timers</h1>
 
-  <div id="timers" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-4xl"></div>
+    <!-- Timer Form -->
+    <form id="add-timer-form" class="bg-gray-800 p-4 rounded-lg shadow mb-10 grid grid-cols-1 sm:grid-cols-5 gap-3">
+      <input type="text" id="name" placeholder="Builder Name" required class="col-span-2 p-2 rounded text-black" />
+
+      <div class="flex gap-1">
+        <input type="number" id="days" min="0" placeholder="d" class="w-16 p-2 rounded text-black" />
+        <input type="number" id="hours" min="0" max="23" placeholder="h" class="w-16 p-2 rounded text-black" />
+        <input type="number" id="minutes" min="0" max="59" placeholder="m" class="w-16 p-2 rounded text-black" />
+      </div>
+
+      <button type="submit" class="bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition">Add</button>
+    </form>
+
+    <!-- Timers -->
+    <div id="timers" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </div>
 
 <script>
-  const apiBase = ''; // If served on same origin; else put backend URL
+  const apiBase = ''; // Use full URL if needed
 
   async function fetchTimers() {
     const res = await fetch(`${apiBase}/timers`);
-    if (!res.ok) return [];
-    return await res.json();
+    return res.ok ? await res.json() : [];
   }
 
   async function addTimer(name, duration) {
@@ -51,25 +60,35 @@
   function renderTimers(timers) {
     const container = document.getElementById('timers');
     container.innerHTML = '';
+
     if (timers.length === 0) {
-      container.textContent = 'No active timers.';
+      container.innerHTML = '<p class="text-center text-gray-400">No active timers.</p>';
       return;
     }
+
     timers.forEach(timer => {
+      const remaining = timer.remaining_seconds;
+      const isDone = remaining <= 0;
+      const bgColor = isDone ? 'bg-red-700' : 'bg-gray-800';
+
       const div = document.createElement('div');
-      div.className = 'bg-gray-800 p-4 rounded shadow flex justify-between items-center';
+      div.className = `${bgColor} p-4 rounded shadow flex justify-between items-start transition-all`;
+
       div.innerHTML = `
         <div>
-          <h2 class="font-bold text-xl">${timer.name}</h2>
-          <p>${timer.remaining_seconds > 0 ? formatRemaining(timer.remaining_seconds) : 'Finished!'}</p>
+          <h2 class="font-bold text-xl mb-1">${timer.name}</h2>
+          <p class="text-sm ${isDone ? 'text-red-300' : 'text-gray-300'}">
+            ${isDone ? '✅ Finished!' : formatRemaining(remaining)}
+          </p>
         </div>
-        <button class="text-red-500 font-bold hover:text-red-700">X</button>
+        <button class="text-red-400 font-bold hover:text-red-600 transition">✖</button>
       `;
-      const btn = div.querySelector('button');
-      btn.onclick = async () => {
+
+      div.querySelector('button').onclick = async () => {
         await deleteTimer(timer.id);
         await loadAndRender();
       };
+
       container.appendChild(div);
     });
   }
@@ -79,18 +98,24 @@
     renderTimers(timers);
   }
 
-  // Refresh timers every second
+  // Update every second
   setInterval(loadAndRender, 1000);
-
-  // Initial load
   loadAndRender();
 
-  // Add timer form
+  // Add timer handler
   document.getElementById('add-timer-form').addEventListener('submit', async e => {
     e.preventDefault();
     const name = document.getElementById('name').value.trim();
-    const duration = document.getElementById('duration').value.trim();
-    if (!name || !duration) return alert('Enter name and duration!');
+    const d = parseInt(document.getElementById('days').value) || 0;
+    const h = parseInt(document.getElementById('hours').value) || 0;
+    const m = parseInt(document.getElementById('minutes').value) || 0;
+
+    if (!name || (d === 0 && h === 0 && m === 0)) {
+      alert('Enter builder name and duration');
+      return;
+    }
+
+    const duration = `${d}d${h}h${m}m`;
     await addTimer(name, duration);
     e.target.reset();
     await loadAndRender();
