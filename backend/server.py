@@ -34,7 +34,7 @@ app.add_middleware(
 )
 
 # Serve the frontend static files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")
 
 # ========== Database Helpers ==========
 
