@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notifimers</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,8 +14,9 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            background-image: radial-gradient(circle at top, #1f2937, #111827 60%);
+            background-color: #0c0a09;
+            background-image: radial-gradient(circle at top, #1c1917, #0c0a09 70%);
+            padding-bottom: 120px;
         }
 
         .font-mono {
@@ -23,110 +24,212 @@
         }
 
         .glass-card {
-            background: rgba(31, 41, 55, 0.6);
+            background: rgba(28, 25, 23, 0.6);
             backdrop-filter: blur(12px);
-            border: 1px solid rgba(55, 65, 81, 0.3);
+            border: 1px solid rgba(41, 37, 36, 0.8);
         }
 
         .timer-card.finished {
-            background: rgba(5, 150, 105, 0.2);
-            border-color: rgba(16, 185, 129, 0.4);
+            background: rgba(5, 150, 105, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
         }
 
         .input-main:focus-within {
-            box-shadow: 0 0 0 2px #10b981;
-        }
-
-        .number-picker::-webkit-scrollbar {
-            width: 4px;
-        }
-
-        .number-picker::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .number-picker::-webkit-scrollbar-thumb {
-            background: #4b5563;
-            border-radius: 20px;
+            box-shadow: 0 0 0 2px #f59e0b;
         }
 
         .number-picker {
-            scrollbar-width: thin;
-            scrollbar-color: #4b5563 transparent;
+            scroll-snap-type: y mandatory;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            height: 8rem;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .number-picker::-webkit-scrollbar {
+            display: none;
+        }
+
+        .picker-item {
+            height: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            scroll-snap-align: center;
+            transition: all 0.2s ease-in-out;
         }
 
         .picker-item.selected {
-            background-color: #10b981;
-            color: white;
+            color: #f59e0b;
             font-weight: 700;
+            background-color: rgba(245, 158, 11, 0.1);
+            border-radius: 6px;
+            transform: scale(1.1);
+        }
+
+        .picker-container::after {
+            content: '';
+            position: absolute;
+            top: 45%;
+            left: 0;
+            right: 0;
+            height: 2.5rem;
+            margin-top: 0.25rem;
+            background: rgba(245, 158, 11, 0.05);
+            border-top: 1px solid rgba(245, 158, 11, 0.2);
+            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+            pointer-events: none;
+            border-radius: 4px;
+            z-index: 10;
+        }
+
+        .picker-item {
+            transition: transform 0.3s ease, color 0.3s ease;
+            font-size: 1rem;
+            color: #999;
+        }
+
+        .picker-item.selected {
+            color: #f59e0b;
+            /* amber-500 */
+            font-weight: bold;
+            font-size: 1.5rem;
+            transform: scale(1.2);
+        }
+
+        #days-picker,
+        #hours-picker,
+        #minutes-picker {
+            scroll-behavior: smooth;
+            scroll-snap-type: y mandatory;
+            overflow-y: auto;
+            max-height: 160px;
+            /* example */
+            position: relative;
+            scrollbar-width: none;
+            /* hide scrollbar for Firefox */
+        }
+
+        #days-picker::-webkit-scrollbar,
+        #hours-picker::-webkit-scrollbar,
+        #minutes-picker::-webkit-scrollbar {
+            display: none;
+            /* hide scrollbar for webkit */
+        }
+
+        /* Optional: overlay fade on top/bottom to emphasize center */
+        .picker-overlay {
+            pointer-events: none;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), transparent 25%, transparent 75%, rgba(255, 255, 255, 0.9));
+            z-index: 5;
         }
     </style>
 </head>
 
-<body class="text-slate-200 min-h-screen p-4 sm:p-6 flex flex-col items-center">
-    <div class="max-w-3xl w-full">
+<body class="text-slate-300 min-h-screen p-4 sm:p-6 flex flex-col items-center">
+    <div id="app-container" class="max-w-xl w-full">
         <header class="text-center mb-6">
-            <h1 class="text-3xl sm:text-4xl font-bold mb-2 text-slate-100">⚡ Speed Timers</h1>
-            <p class="text-slate-400">Enter a task and its duration below.</p>
+            <h1 class="text-3xl sm:text-4xl font-bold mb-2 text-slate-100">
+                <span class="text-amber-400">Notifi</span>mers
+            </h1>
         </header>
 
-        <form id="add-timer-form" class="mb-6 space-y-4">
-            <div class="relative">
-                <div class="input-main glass-card rounded-lg p-2 flex items-center gap-2 transition-all duration-300">
-                    <input type="text" id="name-input" placeholder="Task Name" required
-                        class="w-full bg-transparent p-2 pr-8 text-slate-100 focus:outline-none" autocomplete="off" />
+        <div id="timers-section" class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-slate-200">Active Timers</h2>
+                <button id="clear-finished-btn" class="text-sm text-slate-400 hover:text-red-400 transition"
+                    title="Remove all finished timers">Clear Finished</button>
+            </div>
+            <div id="timers" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+
+        <!-- ✅ QUICK PRESETS -->
+        <div class="mb-4 flex flex-wrap gap-2 justify-center">
+            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
+                data-name="Pomodoro 🍅" data-duration="0d0h25m">🍅 25m</button>
+            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
+                data-name="Break ☕" data-duration="0d0h5m">☕ 5m</button>
+            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
+                data-name="Nap 😴" data-duration="0d0h25m">😴 25m</button>
+        </div>
+
+        <!-- INPUTS -->
+        <div id="input-section"
+            class="fixed bottom-0 left-0 right-0 p-4 bg-stone-900/80 backdrop-blur-lg border-t border-stone-800">
+            <div class="max-w-xl mx-auto">
+                <form id="add-timer-form" class="space-y-3">
+                    <div class="input-main glass-card rounded-lg p-1 flex items-center gap-2">
+                        <input type="text" id="name-input" placeholder="What are you timing?" required
+                            class="w-full bg-transparent px-3 py-2 text-slate-100 focus:outline-none"
+                            autocomplete="off" />
+                        <button type="button" id="clear-name-btn"
+                            class="text-slate-500 hover:text-white transition-colors hidden mr-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-5 h-5"
+                                viewBox="0 0 20 20">
+                                <path
+                                    d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <div class="input-main glass-card rounded-lg p-1 flex items-center gap-2 w-full">
+                            <input type="text" id="duration-input" placeholder="e.g., 1h 30m or 45" required
+                                class="w-full bg-transparent px-3 py-2 text-slate-100 focus:outline-none"
+                                autocomplete="off" inputmode="decimal" />
+                            <button type="button" id="toggle-picker-btn"
+                                class="text-slate-400 hover:text-amber-400 p-2 rounded-md transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-5 h-5"
+                                    viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd"
+                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <button type="submit" id="submit-btn"
+                            class="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 rounded-lg px-5 text-stone-900 font-bold shadow-lg flex items-center justify-center">
+                            <svg id="submit-icon" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-6 h-6"
+                                viewBox="0 0 20 20">
+                                <path
+                                    d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                            </svg>
+                            <svg id="submit-spinner" class="animate-spin h-6 w-6 hidden"
+                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+
+                <div id="picker-container-wrapper"
+                    class="hidden relative picker-container glass-card rounded-lg p-4 grid grid-cols-3 gap-4 mt-3">
+                    <div class="text-center">
+                        <p class="font-semibold text-sm text-slate-400">Days</p>
+                        <div id="days-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
+                    </div>
+                    <div class="text-center">
+                        <p class="font-semibold text-sm text-slate-400">Hours</p>
+                        <div id="hours-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
+                    </div>
+                    <div class="text-center">
+                        <p class="font-semibold text-sm text-slate-400">Minutes</p>
+                        <div id="minutes-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
+                    </div>
                 </div>
-                <button type="button" id="clear-name-btn"
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                        <path
-                            d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                    </svg>
-                </button>
-            </div>
-            <div class="input-main glass-card rounded-lg p-2 flex items-center gap-2 transition-all duration-300">
-                <input type="text" id="duration-input" placeholder="Duration (e.g., 45 or 1 12 30)" required
-                    class="w-full bg-transparent p-2 text-slate-100 focus:outline-none" autocomplete="off"
-                    inputmode="decimal" />
-                <button type="button" id="toggle-picker-btn"
-                    class="text-slate-400 hover:text-emerald-400 p-2 rounded-md transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                        <path fill-rule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
-                            clip-rule="evenodd" />
-                    </svg>
-                </button>
-                <button type="submit"
-                    class="bg-emerald-600 hover:bg-emerald-500 transition-colors rounded-md p-2 text-white font-bold shadow-lg flex-shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                        <path
-                            d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                    </svg>
-                </button>
-            </div>
-        </form>
-
-        <div id="picker-container" class="hidden glass-card rounded-lg p-4 grid grid-cols-3 gap-4 mb-6">
-            <div class="text-center">
-                <p class="font-semibold text-sm text-slate-400">Days</p>
-                <div id="days-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
-            </div>
-            <div class="text-center">
-                <p class="font-semibold text-sm text-slate-400">Hours</p>
-                <div id="hours-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
-            </div>
-            <div class="text-center">
-                <p class="font-semibold text-sm text-slate-400">Minutes</p>
-                <div id="minutes-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
             </div>
         </div>
-
-        <div class="mb-8 flex justify-end">
-            <button id="clear-finished-btn" class="text-sm text-slate-400 hover:text-red-400 transition"
-                title="Remove all finished timers">Clear Finished</button>
-        </div>
-
-        <div id="timers" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
     </div>
 
     <script src="/static/app.js"></script>
