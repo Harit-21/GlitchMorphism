@@ -82,34 +82,23 @@ else:
 
 # ========== Utility Functions ==========
 def reconstruct_text_by_lines(annotations):
-    """
-    Groups OCR annotations into lines based on their vertical position.
-    """
     lines = {}
-    # Group annotations into lines based on their Y-coordinate
-    for annotation in annotations[1:]: # Skip the first annotation, which is the full text block
+    for annotation in annotations[1:]:
         avg_y = sum(v.y for v in annotation.bounding_poly.vertices) / 4
         found_line = False
         for line_y, line in lines.items():
-            if abs(line_y - avg_y) < 15: # 15px tolerance for words on the same line
-                line.append(annotation)
-                found_line = True
-                break
-        if not found_line:
-            lines[avg_y] = [annotation]
-
+            if abs(line_y - avg_y) < 15:
+                line.append(annotation); found_line = True; break
+        if not found_line: lines[avg_y] = [annotation]
     reconstructed_lines = []
-    # Sort lines by vertical position, and words within lines by horizontal position
     for line_y in sorted(lines.keys()):
         lines[line_y].sort(key=lambda a: a.bounding_poly.vertices[0].x)
         reconstructed_lines.append(" ".join(a.description for a in lines[line_y]))
-    
     return "\n".join(reconstructed_lines)
 
 
 def parse_duration(s: str) -> timedelta:
-    # ... (This function is unchanged)
-    s = s.strip().lower().replace('-', ' ').replace(',', ' ') # Also replace commas
+    s = s.strip().lower().replace('-', ' ').replace(',', ' ')
     if s.isdigit(): return timedelta(minutes=int(s))
     days, hours, minutes = 0, 0, 0
     d_match = re.search(r"(\d+)\s*d", s); h_match = re.search(r"(\d+)\s*h", s); m_match = re.search(r"(\d+)\s*m", s)
@@ -120,32 +109,56 @@ def parse_duration(s: str) -> timedelta:
     return timedelta(days=days, hours=hours, minutes=minutes)
 
 def parse_ocr_text_and_create_timers(text: str, db: Session):
-    # ... (This function is unchanged)
     timers_found = []
+    relevant_text = text
     try:
-        start_marker = "upgrades in progress:"; end_marker = "suggested upgrades:"
-        start_index = text.lower().index(start_marker) + len(start_marker)
-        end_index = text.lower().index(end_marker)
-        relevant_text = text[start_index:end_index]
-        print("---- Isolated Relevant Text ----\n" + relevant_text.strip() + "\n-----------------------")
-    except ValueError:
-        print("Could not isolate upgrade block, parsing whole text.")
-        relevant_text = text
-    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
-    for match in timer_regex.finditer(relevant_text):
+        # Use flexible markers without colons to be more robust
+        start_marker = "upgrades in progress"
+        end_marker = "suggested upgrades"
+        
+        start_index = text.lower().find(start_marker)
+        if start_index != -1:
+            start_index += len(start_marker)
+            end_index = text.lower().find(end_marker, start_index)
+            if end_index != -1:
+                relevant_text = text[start_index:end_index]
+                print("---- Isolated Relevant Text ----\n" + relevant_text.strip() + "\n-----------------------")
+    except Exception:
+        print("Could not isolate text block, parsing whole text.")
+
+    # A simpler regex, designed to run on a single line at a time
+    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.IGNORECASE)
+    
+    # Process the relevant text block line by line
+    for line in relevant_text.strip().split('\n'):
+        line = line.strip()
+        match = timer_regex.match(line)
+        if not match:
+            continue
+
         name = match.group(1).strip()
         duration_str = match.group(2).strip()
-        if not name: continue
+        
+        # Skip empty names or lines that might be just numbers
+        if not name or name.isdigit():
+            continue
+            
         print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
         try:
             delta = parse_duration(duration_str)
-            start_time_dt = datetime.utcnow(); end_time_dt = start_time_dt + delta
+            start_time_dt = datetime.utcnow()
+            end_time_dt = start_time_dt + delta
             new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
-            db.add(new_timer); timers_found.append(name)
-        except ValueError: print(f"Could not parse duration '{duration_str}' for '{name}'")
-    if timers_found: db.commit()
-    return timers_found
+            db.add(new_timer)
+            timers_found.append(name)
+        except ValueError:
+            print(f"Could not parse duration '{duration_str}' for '{name}'")
 
+    if timers_found:
+        db.commit()
+        
+    return timers_found
+    
 def send_telegram_message(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
