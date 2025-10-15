@@ -1,34 +1,32 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- STATE ---
     let timersState = [];
     let selectedTime = { days: 0, hours: 0, minutes: 0 };
-    const apiBase = '';
+    const apiBase = ''; // You can set this if using a backend
 
-    // --- DOM ELEMENTS ---
     const timersContainer = document.getElementById('timers');
     const form = document.getElementById('add-timer-form');
     const nameInput = document.getElementById('name-input');
     const durationInput = document.getElementById('duration-input');
     const clearFinishedBtn = document.getElementById('clear-finished-btn');
     const togglePickerBtn = document.getElementById('toggle-picker-btn');
-    const pickerContainer = document.getElementById('picker-container');
+    const pickerContainer = document.getElementById('picker-container-wrapper');
     const clearNameBtn = document.getElementById('clear-name-btn');
     const submitBtn = document.getElementById('submit-btn');
     const submitIcon = document.getElementById('submit-icon');
     const submitSpinner = document.getElementById('submit-spinner');
+    const quickBtns = document.querySelectorAll('.quick-btn');
     const pickers = {
         days: document.getElementById('days-picker'),
         hours: document.getElementById('hours-picker'),
         minutes: document.getElementById('minutes-picker')
     };
 
-    // --- API FUNCTIONS ---
     async function apiFetchTimers() {
         try {
             const res = await fetch(`${apiBase}/timers`);
             return res.ok ? await res.json() : [];
-        } catch (error) {
-            console.error("Failed to fetch timers:", error);
+        } catch (err) {
+            console.error("Fetch error:", err);
             return [];
         }
     }
@@ -37,16 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await fetch(`${apiBase}/timers`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, duration }),
+            body: JSON.stringify({ name, duration })
         });
-        if (!res.ok) alert('Failed to add timer');
+        if (!res.ok) alert("Failed to add timer");
     }
 
     async function apiDeleteTimer(id) {
         await fetch(`${apiBase}/timers/${id}`, { method: 'DELETE' });
     }
 
-    // --- UI & UTILITY FUNCTIONS ---
     function formatRemaining(sec) {
         if (sec <= 0) return '✅ Finished!';
         const d = Math.floor(sec / 86400);
@@ -56,71 +53,72 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${d}d ${h}h ${m}m ${s}s`;
     }
 
-    function populatePickers() {
-        for (let i = 0; i <= 30; i++) pickers.days.innerHTML += `<div class="picker-item p-1 cursor-pointer rounded">${i}</div>`;
-        for (let i = 0; i < 24; i++) pickers.hours.innerHTML += `<div class="picker-item p-1 cursor-pointer rounded">${i}</div>`;
-        for (let i = 0; i < 60; i++) pickers.minutes.innerHTML += `<div class="picker-item p-1 cursor-pointer rounded">${i}</div>`;
+    function parseSmartDuration(str) {
+        const clean = str.trim().toLowerCase();
+        let days = 0, hours = 0, minutes = 0;
+        const regex = /(\d+)\s*(d|h|m)?/g;
+        let match;
+        while ((match = regex.exec(clean))) {
+            const num = parseInt(match[1]);
+            const unit = match[2];
+            if (unit === 'd') days = num;
+            else if (unit === 'h') hours = num;
+            else if (unit === 'm') minutes = num;
+            else if (!unit && minutes === 0) minutes = num;
+        }
+        return `${days}d${hours}h${minutes}m`;
     }
 
-    function updatePickerSelection() {
+    function populatePickers() {
+        const padding = '<div class="h-12 flex-shrink-0"></div>';
         for (const unit in pickers) {
-            Array.from(pickers[unit].children).forEach(child => {
-                child.classList.remove('selected');
-                if (parseInt(child.textContent) === selectedTime[unit]) {
-                    child.classList.add('selected');
-                    child.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                }
-            });
+            const limit = unit === 'days' ? 30 : unit === 'hours' ? 23 : 59;
+            let html = padding;
+            for (let i = 0; i <= limit; i++) {
+                html += `<div class="picker-item p-2 text-center">${i}</div>`;
+            }
+            html += padding;
+            pickers[unit].innerHTML = html;
         }
     }
 
     function updateDurationInputFromPicker() {
         const { days, hours, minutes } = selectedTime;
-        durationInput.value = `${days} ${hours} ${minutes}`;
+        durationInput.value = `${days}d ${hours}h ${minutes}m`;
     }
 
-    function parseSmartDuration(durationString) {
-        const durationParts = durationString.trim().split(/\s+/);
-        if (durationParts.some(part => /[a-zA-Z]/.test(part))) {
-            return durationParts.join('');
-        }
-        let d = 0, h = 0, m = 0;
-        const nums = durationParts.map(p => parseInt(p)).filter(n => !isNaN(n));
-        if (nums.length === 1) m = nums[0];
-        else if (nums.length === 2) { h = nums[0]; m = nums[1]; }
-        else if (nums.length >= 3) { d = nums[0]; h = nums[1]; m = nums[2]; }
-        return `${d}d${h}h${m}m`;
-    }
-
-    // --- CORE LOGIC ---
     function stopAllTimers() {
-        timersState.forEach(t => {
-            if (t.intervalId) clearInterval(t.intervalId);
-        });
+        timersState.forEach(t => t.intervalId && clearInterval(t.intervalId));
     }
 
     function renderTimers() {
         timersContainer.innerHTML = '';
         if (timersState.length === 0) {
-            timersContainer.innerHTML = '<p class="text-center text-gray-400 text-lg mt-10 col-span-full">No active timers.</p>';
+            timersContainer.innerHTML = `<p class="text-center text-slate-400 text-base mt-10 col-span-full">No active timers. Add one below!</p>`;
             return;
         }
+
         timersState.forEach(timer => {
             const isDone = timer.remaining_seconds <= 0;
-            const cardClass = isDone ? 'timer-card finished' : 'timer-card';
-            const textColor = isDone ? 'text-emerald-300' : 'text-slate-300';
-
             const div = document.createElement('div');
             div.id = `timer-${timer.id}`;
-            div.className = `${cardClass} glass-card p-5 rounded-lg shadow-lg flex justify-between items-start transition-all duration-300 ease-in-out`;
+            div.className = `timer-card ${isDone ? 'finished' : ''} glass-card p-4 rounded-lg shadow-lg flex flex-col gap-2 transition-all`;
+
+            const total = timer.total_seconds || (timer.original_seconds || 1);
+            const percent = Math.max(0, Math.min(100, Math.floor((timer.remaining_seconds / total) * 100)));
 
             div.innerHTML = `
-                <div>
-                    <h2 class="font-bold text-xl mb-1 select-text">${timer.name}</h2>
-                    <p class="font-mono ${textColor} text-sm select-text">${formatRemaining(timer.remaining_seconds)}</p>
-                </div>
-                <button data-id="${timer.id}" class="delete-btn text-slate-500 font-bold hover:text-red-400 transition select-none" title="Delete timer">✖</button>
-            `;
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="font-bold text-lg mb-1">${timer.name}</h2>
+            <p class="font-mono ${isDone ? 'text-emerald-400' : 'text-slate-300'}">${formatRemaining(timer.remaining_seconds)}</p>
+          </div>
+          <button data-id="${timer.id}" class="delete-btn text-slate-500 hover:text-red-400 transition">✖</button>
+        </div>
+        <div class="w-full bg-stone-800 h-2 rounded overflow-hidden">
+          <div class="h-full bg-amber-500 transition-all" style="width: ${percent}%"></div>
+        </div>
+      `;
             timersContainer.appendChild(div);
         });
     }
@@ -128,12 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function startClientSideCountdown() {
         timersState.forEach(timer => {
             if (timer.remaining_seconds > 0) {
+                timer.total_seconds = timer.remaining_seconds;
                 timer.intervalId = setInterval(() => {
                     timer.remaining_seconds--;
                     updateTimerDisplay(timer);
                     if (timer.remaining_seconds <= 0) {
                         clearInterval(timer.intervalId);
-                        refreshAllTimers(); // Refresh to get the final "Finished" state
+                        refreshAllTimers();
                     }
                 }, 1000);
             }
@@ -141,10 +140,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateTimerDisplay(timer) {
-        const timerCard = document.getElementById(`timer-${timer.id}`);
-        if (!timerCard) return;
-        const p = timerCard.querySelector('p');
-        p.textContent = formatRemaining(timer.remaining_seconds);
+        const card = document.getElementById(`timer-${timer.id}`);
+        if (!card) return;
+        const text = card.querySelector('p');
+        const progress = card.querySelector('div.bg-amber-500');
+        text.textContent = formatRemaining(timer.remaining_seconds);
+        const percent = Math.floor((timer.remaining_seconds / timer.total_seconds) * 100);
+        progress.style.width = `${percent}%`;
     }
 
     async function refreshAllTimers() {
@@ -154,33 +156,24 @@ document.addEventListener('DOMContentLoaded', () => {
         startClientSideCountdown();
     }
 
-    // --- EVENT HANDLERS ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = nameInput.value.trim();
-        const durationRaw = durationInput.value.trim();
-        if (!name || !durationRaw) {
-            alert("Please provide both a task name and a duration.");
-            return;
-        }
-
-        // Disable button and show spinner
+        const raw = durationInput.value.trim();
+        if (!name || !raw) return alert("Name and duration required");
         submitBtn.disabled = true;
         submitIcon.classList.add('hidden');
         submitSpinner.classList.remove('hidden');
-
         try {
-            const finalDuration = parseSmartDuration(durationRaw);
-            await apiAddTimer(name, finalDuration);
-
-            // Clear inputs and refresh the list
+            const parsed = parseSmartDuration(raw);
+            await apiAddTimer(name, parsed);
             nameInput.value = '';
             durationInput.value = '';
+            pickerContainer.classList.add('hidden');
+            clearNameBtn.classList.add('hidden');
             await refreshAllTimers();
             nameInput.focus();
-            clearNameBtn.classList.add('hidden');
         } finally {
-            // Re-enable button and hide spinner, even if an error occurred
             submitBtn.disabled = false;
             submitIcon.classList.remove('hidden');
             submitSpinner.classList.add('hidden');
@@ -189,24 +182,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     timersContainer.addEventListener('click', async e => {
         if (e.target.classList.contains('delete-btn')) {
-            const timerId = e.target.dataset.id;
-            await apiDeleteTimer(timerId);
+            await apiDeleteTimer(e.target.dataset.id);
             await refreshAllTimers();
         }
     });
 
     clearFinishedBtn.addEventListener('click', async () => {
-        const finishedTimers = timersState.filter(t => t.remaining_seconds <= 0);
-        if (finishedTimers.length === 0) return;
-        if (confirm(`Are you sure you want to clear ${finishedTimers.length} finished timer(s)?`)) {
-            await Promise.all(finishedTimers.map(t => apiDeleteTimer(t.id)));
+        const finished = timersState.filter(t => t.remaining_seconds <= 0);
+        if (finished.length === 0) return;
+        if (confirm(`Clear ${finished.length} finished timer(s)?`)) {
+            await Promise.all(finished.map(t => apiDeleteTimer(t.id)));
             await refreshAllTimers();
         }
     });
 
-    togglePickerBtn.addEventListener('click', () => pickerContainer.classList.toggle('hidden'));
+    togglePickerBtn.addEventListener('click', () => {
+        pickerContainer.classList.toggle('hidden');
+    });
 
-    nameInput.addEventListener('input', () => clearNameBtn.classList.toggle('hidden', !nameInput.value));
+    nameInput.addEventListener('input', () => {
+        clearNameBtn.classList.toggle('hidden', !nameInput.value);
+    });
 
     clearNameBtn.addEventListener('click', () => {
         nameInput.value = '';
@@ -218,20 +214,35 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = e.target.value.replace(/[^0-9dhm\s]/gi, '');
     });
 
-    pickerContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('picker-item')) {
-            const value = parseInt(e.target.textContent);
-            const parentId = e.target.parentElement.id;
-            if (parentId.includes('days')) selectedTime.days = value;
-            if (parentId.includes('hours')) selectedTime.hours = value;
-            if (parentId.includes('minutes')) selectedTime.minutes = value;
-            updatePickerSelection();
-            updateDurationInputFromPicker();
-        }
-    });
+    // Snap-to-Scroll
+    for (const unit in pickers) {
+        let scrollTimeout;
+        pickers[unit].addEventListener('scroll', () => {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                const picker = pickers[unit];
+                const top = picker.getBoundingClientRect().top;
+                const center = top + picker.clientHeight / 2;
+                let closest = null;
+                let minDist = Infinity;
+                Array.from(picker.children).forEach(item => {
+                    const itemTop = item.getBoundingClientRect().top;
+                    const dist = Math.abs(center - (itemTop + item.offsetHeight / 2));
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closest = item;
+                    }
+                });
+                if (closest && !closest.classList.contains('selected')) {
+                    Array.from(picker.children).forEach(child => child.classList.remove('selected'));
+                    closest.classList.add('selected');
+                    selectedTime[unit] = parseInt(closest.textContent);
+                    updateDurationInputFromPicker();
+                }
+            }, 150);
+        });
+    }
 
-    // --- INITIALIZATION ---
     populatePickers();
-    updatePickerSelection();
     refreshAllTimers();
 });
