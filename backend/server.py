@@ -106,6 +106,11 @@ def on_startup():
 def root():
     return FileResponse(os.path.join(STATIC_PATH, "index.html"))
 
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
 @app.get("/timers", response_model=list[TimerOut])
 def get_timers(db: Session = Depends(get_db)):
     timers_db = db.query(Timer).filter(Timer.cleared_by_user == False).order_by(Timer.end_time).all()
