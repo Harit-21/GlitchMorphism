@@ -13,6 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const togglePickerBtn = document.getElementById('toggle-picker-btn');
     const pickerContainer = document.getElementById('picker-container');
     const clearNameBtn = document.getElementById('clear-name-btn');
+    const submitBtn = document.getElementById('submit-btn');
+    const submitIcon = document.getElementById('submit-icon');
+    const submitSpinner = document.getElementById('submit-spinner');
     const pickers = {
         days: document.getElementById('days-picker'),
         hours: document.getElementById('hours-picker'),
@@ -110,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.id = `timer-${timer.id}`;
             div.className = `${cardClass} glass-card p-5 rounded-lg shadow-lg flex justify-between items-start transition-all duration-300 ease-in-out`;
-            
+
             div.innerHTML = `
                 <div>
                     <h2 class="font-bold text-xl mb-1 select-text">${timer.name}</h2>
@@ -160,15 +163,30 @@ document.addEventListener('DOMContentLoaded', () => {
             alert("Please provide both a task name and a duration.");
             return;
         }
-        const finalDuration = parseSmartDuration(durationRaw);
-        await apiAddTimer(name, finalDuration);
-        nameInput.value = '';
-        durationInput.value = '';
-        await refreshAllTimers();
-        nameInput.focus();
-        clearNameBtn.classList.add('hidden');
+
+        // Disable button and show spinner
+        submitBtn.disabled = true;
+        submitIcon.classList.add('hidden');
+        submitSpinner.classList.remove('hidden');
+
+        try {
+            const finalDuration = parseSmartDuration(durationRaw);
+            await apiAddTimer(name, finalDuration);
+
+            // Clear inputs and refresh the list
+            nameInput.value = '';
+            durationInput.value = '';
+            await refreshAllTimers();
+            nameInput.focus();
+            clearNameBtn.classList.add('hidden');
+        } finally {
+            // Re-enable button and hide spinner, even if an error occurred
+            submitBtn.disabled = false;
+            submitIcon.classList.remove('hidden');
+            submitSpinner.classList.add('hidden');
+        }
     });
-    
+
     timersContainer.addEventListener('click', async e => {
         if (e.target.classList.contains('delete-btn')) {
             const timerId = e.target.dataset.id;
@@ -187,9 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     togglePickerBtn.addEventListener('click', () => pickerContainer.classList.toggle('hidden'));
-    
+
     nameInput.addEventListener('input', () => clearNameBtn.classList.toggle('hidden', !nameInput.value));
-    
+
     clearNameBtn.addEventListener('click', () => {
         nameInput.value = '';
         nameInput.focus();
@@ -211,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateDurationInputFromPicker();
         }
     });
-    
+
     // --- INITIALIZATION ---
     populatePickers();
     updatePickerSelection();
