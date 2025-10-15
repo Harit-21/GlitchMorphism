@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const quickBtns = document.querySelectorAll('.quick-btn');
     const clearFinishedBtn = document.getElementById('clear-finished-btn');
     const pickers = { days: document.getElementById('days-picker'), hours: document.getElementById('hours-picker'), minutes: document.getElementById('minutes-picker') };
+    const uploadInput = document.getElementById('screenshot-upload');
+    const uploadStatus = document.getElementById('upload-status');
     
     // --- API FUNCTIONS ---
     async function apiFetchTimers() {
@@ -33,6 +35,43 @@ document.addEventListener('DOMContentLoaded', () => {
     async function apiClearTimer(id) {
         await fetch(`${apiBase}/timers/${id}/clear`, { method: 'POST' });
     }
+
+    async function apiUploadScreenshot(file) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch(`${apiBase}/upload-screenshot`, {
+            method: 'POST',
+            body: formData,
+        });
+        
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.detail || 'Screenshot upload failed');
+        }
+        return await res.json();
+    }
+
+    uploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        uploadStatus.textContent = 'Processing screenshot...';
+        uploadStatus.classList.remove('hidden');
+
+        try {
+            const result = await apiUploadScreenshot(file);
+            console.log("Server response:", result);
+            uploadStatus.textContent = 'Success! Refreshing timers...';
+            await refreshAllTimers();
+        } catch (error) {
+            console.error(error);
+            uploadStatus.textContent = error.message;
+        } finally {
+            setTimeout(() => { uploadStatus.classList.add('hidden'); }, 4000);
+            e.target.value = ''; // Reset input
+        }
+    });
 
     // --- MAIN REFRESH FUNCTION ---
     // ✅ SIMPLIFIED: No more local filtering needed, the backend does it all!
