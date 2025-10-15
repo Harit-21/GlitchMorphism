@@ -155,6 +155,19 @@ def clear_timer(timer_id: int, db: Session = Depends(get_db)):
     db.commit()
     return Response(status_code=204)
 
+@app.post("/upload-screenshot")
+async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = File(...)):
+    """
+    Receives a screenshot, but does not process it yet.
+    This is a placeholder for the real OCR logic.
+    """
+    print(f"Received file: {file.filename}, content type: {file.content_type}")
+    
+    # In the next step, we will add the Google Cloud Vision API logic here.
+    
+    return {"message": f"File '{file.filename}' received. OCR processing not yet implemented."}
+
+
 # ========== Background Checker ==========
 def background_checker():
     while True:
