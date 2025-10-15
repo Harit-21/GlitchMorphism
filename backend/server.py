@@ -7,6 +7,7 @@ import requests
 import re
 import json
 import io
+from typing import List
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +61,10 @@ class TimerIn(BaseModel):
 
 class TimerOut(BaseModel):
     id: int; name: str; notified: bool; remaining_seconds: int; total_seconds: int
+
+class TimerReduceIn(BaseModel): # ✅ ADD: Pydantic model for the new endpoint
+    timer_ids: List[int]
+    minutes: int
 
 # ========== App Setup ==========
 app = FastAPI(title="Notifimers")
@@ -220,6 +225,23 @@ def clear_timer(timer_id: int, db: Session = Depends(get_db)):
     timer_to_clear = db.query(Timer).filter(Timer.id == timer_id).first()
     if not timer_to_clear: raise HTTPException(status_code=404, detail="Timer not found")
     timer_to_clear.cleared_by_user = True; db.commit()
+    return Response(status_code=204)
+
+@app.post("/timers/reduce-time", status_code=204)
+def reduce_timers_time(data: TimerReduceIn, db: Session = Depends(get_db)):
+    if not data.timer_ids:
+        return Response(status_code=204)
+
+    seconds_to_reduce = data.minutes * 60
+    
+    timers_to_update = db.query(Timer).filter(Timer.id.in_(data.timer_ids)).all()
+    
+    for timer in timers_to_update:
+        # Only reduce time for active timers
+        if timer.end_time > int(datetime.utcnow().timestamp()):
+            timer.end_time -= seconds_to_reduce
+    
+    db.commit()
     return Response(status_code=204)
 
 @app.post("/upload-screenshot")
