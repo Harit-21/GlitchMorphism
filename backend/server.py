@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 import requests
 import re
 import json
-import io 
+import io
+
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -35,7 +36,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# ========== Database Models (SQLAlchemy ORM) ==========
+# ========== Database Models ==========
 class Timer(Base):
     __tablename__ = "timers"
     id = Column(Integer, primary_key=True, index=True)
@@ -43,18 +44,14 @@ class Timer(Base):
     start_time = Column(BigInteger, nullable=False)
     end_time = Column(BigInteger, nullable=False)
     notified = Column(Boolean, default=False, nullable=False)
-    cleared_by_user = Column(Boolean, default=False, nullable=False) # ✅ ADDED THIS NEW COLUMN
+    cleared_by_user = Column(Boolean, default=False, nullable=False)
 
-# ========== Dependency to get a DB session ==========
 def get_db():
     db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    try: yield db
+    finally: db.close()
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
+def init_db(): Base.metadata.create_all(bind=engine)
 
 # ========== Pydantic Models ==========
 class TimerIn(BaseModel):
@@ -62,38 +59,73 @@ class TimerIn(BaseModel):
     duration: str = Field(..., min_length=1)
 
 class TimerOut(BaseModel):
-    id: int
-    name: str
-    notified: bool
-    remaining_seconds: int
-    total_seconds: int
+    id: int; name: str; notified: bool; remaining_seconds: int; total_seconds: int
 
 # ========== App Setup ==========
 app = FastAPI(title="Notifimers")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
 
+# ========== Google Cloud Vision Setup ==========
 GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+vision_client = None
 if GOOGLE_CREDENTIALS_JSON:
-    credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
-    google_credentials = service_account.Credentials.from_service_account_info(credentials_info)
-    vision_client = vision.ImageAnnotatorClient(credentials=google_credentials)
+    try:
+        credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+        google_credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        vision_client = vision.ImageAnnotatorClient(credentials=google_credentials)
+    except Exception as e:
+        print(f"ERROR: Could not load Google credentials: {e}")
 else:
-    vision_client = None
     print("WARNING: Google Cloud credentials not found. OCR will not work.")
 
 
 # ========== Utility Functions ==========
-DURATION_RE = re.compile(r"(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", re.I)
+# ✅ UPDATED: A smarter duration parser that handles hyphens and different units
 def parse_duration(s: str) -> timedelta:
-    s = s.strip().lower()
+    s = s.strip().lower().replace('-', ' ')
     if s.isdigit(): return timedelta(minutes=int(s))
-    m = DURATION_RE.fullmatch(s)
-    if not m: raise ValueError("Invalid duration format")
-    days = int(m.group(1)) if m.group(1) else 0
-    hours = int(m.group(2)) if m.group(2) else 0
-    minutes = int(m.group(3)) if m.group(3) else 0
+    days, hours, minutes = 0, 0, 0
+    d_match = re.search(r"(\d+)\s*d", s); h_match = re.search(r"(\d+)\s*h", s); m_match = re.search(r"(\d+)\s*m", s)
+    if d_match: days = int(d_match.group(1))
+    if h_match: hours = int(h_match.group(1))
+    if m_match: minutes = int(m_match.group(1))
+    if not d_match and not h_match and not m_match: raise ValueError("Invalid duration format")
     return timedelta(days=days, hours=hours, minutes=minutes)
+
+# ✅ UPDATED: The final, more precise OCR parsing logic
+def parse_ocr_text_and_create_timers(text: str, db: Session):
+    timers_found = []
+    try:
+        start_marker = "upgrades in progress:"
+        end_marker = "suggested upgrades:"
+        start_index = text.lower().index(start_marker) + len(start_marker)
+        end_index = text.lower().index(end_marker)
+        relevant_text = text[start_index:end_index]
+        print("---- Isolated Relevant Text ----\n" + relevant_text.strip() + "\n-----------------------")
+    except ValueError:
+        print("Could not isolate upgrade block, parsing whole text.")
+        relevant_text = text
+
+    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
+    
+    for match in timer_regex.finditer(relevant_text):
+        name = match.group(1).strip()
+        duration_str = match.group(2).strip()
+        if not name: continue
+            
+        print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
+        try:
+            delta = parse_duration(duration_str)
+            start_time_dt = datetime.utcnow()
+            end_time_dt = start_time_dt + delta
+            new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
+            db.add(new_timer)
+            timers_found.append(name)
+        except ValueError:
+            print(f"Could not parse duration '{duration_str}' for '{name}'")
+    if timers_found: db.commit()
+    return timers_found
 
 def send_telegram_message(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return False
@@ -110,40 +142,6 @@ def send_ntfy_alarm(title: str):
         return True
     except Exception: return False
 
-def parse_ocr_text_and_create_timers(text: str, db: Session):
-    # This regex looks for lines that might be timers, e.g., "Name 5d 4h 3m"
-    # It's specifically designed for the Clash of Clans screenshot format
-    timer_regex = re.compile(r"^(.*?)\s+((?:\d+d\s*)?(?:\d+h\s*)?(?:\d+m))$", re.MULTILINE)
-    
-    timers_found = []
-    
-    for match in timer_regex.finditer(text):
-        name = match.group(1).strip()
-        duration_str = match.group(2).strip()
-        
-        # Skip common non-timer lines that might match the pattern
-        if name in ["Upgrades in progress:", "Suggested upgrades:", "Other upgrades:"]:
-            continue
-            
-        print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
-        try:
-            delta = parse_duration(duration_str)
-            start_time_dt = datetime.utcnow()
-            end_time_dt = start_time_dt + delta
-            start_time_ts = int(start_time_dt.timestamp())
-            end_time_ts = int(end_time_dt.timestamp())
-            
-            new_timer = Timer(name=name, start_time=start_time_ts, end_time=end_time_ts)
-            db.add(new_timer)
-            timers_found.append(name)
-        except ValueError:
-            print(f"Could not parse duration '{duration_str}' for '{name}'")
-
-    if timers_found:
-        db.commit()
-        
-    return timers_found
-
 # ========== API Endpoints ==========
 @app.on_event("startup")
 def on_startup():
@@ -151,26 +149,20 @@ def on_startup():
     threading.Thread(target=background_checker, daemon=True).start()
 
 @app.get("/", include_in_schema=False)
-def root():
-    return FileResponse(os.path.join(STATIC_PATH, "index.html"))
-
+def root(): return FileResponse(os.path.join(STATIC_PATH, "index.html"))
 
 @app.get("/ping")
-def ping():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+def ping(): return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 @app.get("/timers", response_model=list[TimerOut])
 def get_timers(db: Session = Depends(get_db)):
     timers_db = db.query(Timer).filter(Timer.cleared_by_user == False).order_by(Timer.end_time).all()
     now_ts = int(datetime.utcnow().timestamp())
-    
     response_items = []
     for t in timers_db:
         remaining = t.end_time - now_ts
         total = t.end_time - t.start_time
-        response_items.append(
-            TimerOut(id=t.id, name=t.name, notified=t.notified, remaining_seconds=max(0, remaining), total_seconds=total)
-        )
+        response_items.append(TimerOut(id=t.id, name=t.name, notified=t.notified, remaining_seconds=max(0, remaining), total_seconds=total))
     return response_items
 
 @app.post("/timers", response_model=TimerOut)
@@ -179,60 +171,38 @@ def add_timer(timer_in: TimerIn, db: Session = Depends(get_db)):
     except ValueError as e: raise HTTPException(status_code=400, detail=str(e))
     start_time_dt = datetime.utcnow()
     end_time_dt = start_time_dt + delta
-    start_time_ts = int(start_time_dt.timestamp())
-    end_time_ts = int(end_time_dt.timestamp())
-    new_timer = Timer(name=timer_in.name, start_time=start_time_ts, end_time=end_time_ts)
-    db.add(new_timer)
-    db.commit()
-    db.refresh(new_timer)
-    return TimerOut(id=new_timer.id, name=new_timer.name, notified=new_timer.notified, remaining_seconds=max(0, new_timer.end_time - start_time_ts), total_seconds=(new_timer.end_time - new_timer.start_time))
+    new_timer = Timer(name=timer_in.name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
+    db.add(new_timer); db.commit(); db.refresh(new_timer)
+    return TimerOut(id=new_timer.id, name=new_timer.name, notified=new_timer.notified, remaining_seconds=max(0, new_timer.end_time - new_timer.start_time), total_seconds=(new_timer.end_time - new_timer.start_time))
 
 @app.delete("/timers/{timer_id}", status_code=204)
 def delete_timer(timer_id: int, db: Session = Depends(get_db)):
     timer_to_delete = db.query(Timer).filter(Timer.id == timer_id).first()
     if not timer_to_delete: raise HTTPException(status_code=404, detail="Timer not found")
-    db.delete(timer_to_delete)
-    db.commit()
+    db.delete(timer_to_delete); db.commit()
     return Response(status_code=204)
 
 @app.post("/timers/{timer_id}/clear", status_code=204)
 def clear_timer(timer_id: int, db: Session = Depends(get_db)):
     timer_to_clear = db.query(Timer).filter(Timer.id == timer_id).first()
     if not timer_to_clear: raise HTTPException(status_code=404, detail="Timer not found")
-    timer_to_clear.cleared_by_user = True
-    db.commit()
+    timer_to_clear.cleared_by_user = True; db.commit()
     return Response(status_code=204)
 
 @app.post("/upload-screenshot")
 async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = File(...)):
-    if not vision_client:
-        raise HTTPException(status_code=500, detail="OCR service is not configured on the server.")
-
+    if not vision_client: raise HTTPException(status_code=500, detail="OCR service is not configured.")
     print(f"Received file for OCR: {file.filename}")
-    
-    # Read the file content into memory
-    contents = await file.read()
-    image = vision.Image(content=contents)
-    
-    # Perform text detection
+    contents = await file.read(); image = vision.Image(content=contents)
     response = vision_client.text_detection(image=image)
     texts = response.text_annotations
-    
-    if response.error.message:
-        raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
-
+    if response.error.message: raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
     if texts:
         full_text = texts[0].description
-        print("---- OCR Full Text ----")
-        print(full_text)
-        print("-----------------------")
-        
-        # Parse the text and create timers in the database
+        print("---- OCR Full Text ----\n" + full_text + "\n-----------------------")
         timers_created = parse_ocr_text_and_create_timers(full_text, db)
         return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
-    else:
-        return {"message": "No text found in the image."}
-
+    else: return {"message": "No text found in the image."}
 
 # ========== Background Checker ==========
 def background_checker():
@@ -246,11 +216,9 @@ def background_checker():
                 sent_telegram = send_telegram_message(telegram_msg)
                 sent_alarm = send_ntfy_alarm(timer.name)
                 if sent_telegram or sent_alarm:
-                    timer.notified = True
-                    db.commit()
+                    timer.notified = True; db.commit()
         except Exception as e:
-            print(f"Error in background_checker: {e}")
-            db.rollback()
-        finally:
-            db.close()
+            print(f"Error in background_checker: {e}"); db.rollback()
+        finally: db.close()
         time.sleep(CHECK_INTERVAL_SECONDS)
+        
