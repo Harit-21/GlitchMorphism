@@ -5,6 +5,8 @@ import time
 from datetime import datetime, timedelta
 import requests
 import re
+import json
+import io 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, Column, Integer, String, BigInteger, Boolean
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
+from google.cloud import vision
+from google.oauth2 import service_account
 
 # ========== Configuration ==========
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -69,6 +73,16 @@ app = FastAPI(title="Notifimers")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
 
+GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+if GOOGLE_CREDENTIALS_JSON:
+    credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+    google_credentials = service_account.Credentials.from_service_account_info(credentials_info)
+    vision_client = vision.ImageAnnotatorClient(credentials=google_credentials)
+else:
+    vision_client = None
+    print("WARNING: Google Cloud credentials not found. OCR will not work.")
+
+
 # ========== Utility Functions ==========
 DURATION_RE = re.compile(r"(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", re.I)
 def parse_duration(s: str) -> timedelta:
@@ -95,6 +109,40 @@ def send_ntfy_alarm(title: str):
         requests.post(f"https://ntfy.sh/{NTFY_TOPIC}", data=f"Your timer for '{title}' is complete!", headers={"Title": "Timer Finished!", "Priority": "max", "Tags": "alarm_clock"})
         return True
     except Exception: return False
+
+def parse_ocr_text_and_create_timers(text: str, db: Session):
+    # This regex looks for lines that might be timers, e.g., "Name 5d 4h 3m"
+    # It's specifically designed for the Clash of Clans screenshot format
+    timer_regex = re.compile(r"^(.*?)\s+((?:\d+d\s*)?(?:\d+h\s*)?(?:\d+m))$", re.MULTILINE)
+    
+    timers_found = []
+    
+    for match in timer_regex.finditer(text):
+        name = match.group(1).strip()
+        duration_str = match.group(2).strip()
+        
+        # Skip common non-timer lines that might match the pattern
+        if name in ["Upgrades in progress:", "Suggested upgrades:", "Other upgrades:"]:
+            continue
+            
+        print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
+        try:
+            delta = parse_duration(duration_str)
+            start_time_dt = datetime.utcnow()
+            end_time_dt = start_time_dt + delta
+            start_time_ts = int(start_time_dt.timestamp())
+            end_time_ts = int(end_time_dt.timestamp())
+            
+            new_timer = Timer(name=name, start_time=start_time_ts, end_time=end_time_ts)
+            db.add(new_timer)
+            timers_found.append(name)
+        except ValueError:
+            print(f"Could not parse duration '{duration_str}' for '{name}'")
+
+    if timers_found:
+        db.commit()
+        
+    return timers_found
 
 # ========== API Endpoints ==========
 @app.on_event("startup")
@@ -157,15 +205,33 @@ def clear_timer(timer_id: int, db: Session = Depends(get_db)):
 
 @app.post("/upload-screenshot")
 async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = File(...)):
-    """
-    Receives a screenshot, but does not process it yet.
-    This is a placeholder for the real OCR logic.
-    """
-    print(f"Received file: {file.filename}, content type: {file.content_type}")
+    if not vision_client:
+        raise HTTPException(status_code=500, detail="OCR service is not configured on the server.")
+
+    print(f"Received file for OCR: {file.filename}")
     
-    # In the next step, we will add the Google Cloud Vision API logic here.
+    # Read the file content into memory
+    contents = await file.read()
+    image = vision.Image(content=contents)
     
-    return {"message": f"File '{file.filename}' received. OCR processing not yet implemented."}
+    # Perform text detection
+    response = vision_client.text_detection(image=image)
+    texts = response.text_annotations
+    
+    if response.error.message:
+        raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
+
+    if texts:
+        full_text = texts[0].description
+        print("---- OCR Full Text ----")
+        print(full_text)
+        print("-----------------------")
+        
+        # Parse the text and create timers in the database
+        timers_created = parse_ocr_text_and_create_timers(full_text, db)
+        return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
+    else:
+        return {"message": "No text found in the image."}
 
 
 # ========== Background Checker ==========
