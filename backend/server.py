@@ -81,9 +81,35 @@ else:
 
 
 # ========== Utility Functions ==========
-# ✅ UPDATED: A smarter duration parser that handles hyphens and different units
+def reconstruct_text_by_lines(annotations):
+    """
+    Groups OCR annotations into lines based on their vertical position.
+    """
+    lines = {}
+    # Group annotations into lines based on their Y-coordinate
+    for annotation in annotations[1:]: # Skip the first annotation, which is the full text block
+        avg_y = sum(v.y for v in annotation.bounding_poly.vertices) / 4
+        found_line = False
+        for line_y, line in lines.items():
+            if abs(line_y - avg_y) < 15: # 15px tolerance for words on the same line
+                line.append(annotation)
+                found_line = True
+                break
+        if not found_line:
+            lines[avg_y] = [annotation]
+
+    reconstructed_lines = []
+    # Sort lines by vertical position, and words within lines by horizontal position
+    for line_y in sorted(lines.keys()):
+        lines[line_y].sort(key=lambda a: a.bounding_poly.vertices[0].x)
+        reconstructed_lines.append(" ".join(a.description for a in lines[line_y]))
+    
+    return "\n".join(reconstructed_lines)
+
+
 def parse_duration(s: str) -> timedelta:
-    s = s.strip().lower().replace('-', ' ')
+    # ... (This function is unchanged)
+    s = s.strip().lower().replace('-', ' ').replace(',', ' ') # Also replace commas
     if s.isdigit(): return timedelta(minutes=int(s))
     days, hours, minutes = 0, 0, 0
     d_match = re.search(r"(\d+)\s*d", s); h_match = re.search(r"(\d+)\s*h", s); m_match = re.search(r"(\d+)\s*m", s)
@@ -93,12 +119,11 @@ def parse_duration(s: str) -> timedelta:
     if not d_match and not h_match and not m_match: raise ValueError("Invalid duration format")
     return timedelta(days=days, hours=hours, minutes=minutes)
 
-# ✅ UPDATED: The final, more precise OCR parsing logic
 def parse_ocr_text_and_create_timers(text: str, db: Session):
+    # ... (This function is unchanged)
     timers_found = []
     try:
-        start_marker = "upgrades in progress:"
-        end_marker = "suggested upgrades:"
+        start_marker = "upgrades in progress:"; end_marker = "suggested upgrades:"
         start_index = text.lower().index(start_marker) + len(start_marker)
         end_index = text.lower().index(end_marker)
         relevant_text = text[start_index:end_index]
@@ -106,24 +131,18 @@ def parse_ocr_text_and_create_timers(text: str, db: Session):
     except ValueError:
         print("Could not isolate upgrade block, parsing whole text.")
         relevant_text = text
-
-    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
-    
+    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
     for match in timer_regex.finditer(relevant_text):
         name = match.group(1).strip()
         duration_str = match.group(2).strip()
         if not name: continue
-            
         print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
         try:
             delta = parse_duration(duration_str)
-            start_time_dt = datetime.utcnow()
-            end_time_dt = start_time_dt + delta
+            start_time_dt = datetime.utcnow(); end_time_dt = start_time_dt + delta
             new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
-            db.add(new_timer)
-            timers_found.append(name)
-        except ValueError:
-            print(f"Could not parse duration '{duration_str}' for '{name}'")
+            db.add(new_timer); timers_found.append(name)
+        except ValueError: print(f"Could not parse duration '{duration_str}' for '{name}'")
     if timers_found: db.commit()
     return timers_found
 
@@ -198,7 +217,7 @@ async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = Fi
     texts = response.text_annotations
     if response.error.message: raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
     if texts:
-        full_text = texts[0].description
+        full_text = reconstruct_text_by_lines(texts)
         print("---- OCR Full Text ----\n" + full_text + "\n-----------------------")
         timers_created = parse_ocr_text_and_create_timers(full_text, db)
         return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
