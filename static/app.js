@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     let timersState = [];
     let selectedTime = { days: 0, hours: 0, minutes: 0 };
-    let showFinished = true; // ✅ NEW: State to track visibility
     const apiBase = '';
 
     // --- DOM ELEMENTS ---
@@ -16,12 +15,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitIcon = document.getElementById('submit-icon');
     const submitSpinner = document.getElementById('submit-spinner');
     const quickBtns = document.querySelectorAll('.quick-btn');
-    const toggleFinishedBtn = document.getElementById('toggle-finished-btn'); // Only one variable needed
+    const clearFinishedBtn = document.getElementById('clear-finished-btn');
     const pickers = {
         days: document.getElementById('days-picker'),
         hours: document.getElementById('hours-picker'),
         minutes: document.getElementById('minutes-picker')
     };
+    
+    // ✅ NEW: Helper functions to manage dismissed timers in localStorage
+    function getDismissedIds() {
+        return JSON.parse(localStorage.getItem('dismissedTimerIds') || '[]');
+    }
+
+    function addDismissedId(id) {
+        const ids = getDismissedIds();
+        if (!ids.includes(id)) {
+            ids.push(id);
+            localStorage.setItem('dismissedTimerIds', JSON.stringify(ids));
+        }
+    }
 
     // --- API FUNCTIONS (No changes needed) ---
     async function apiFetchTimers() {
@@ -30,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return res.ok ? await res.json() : [];
         } catch (err) { console.error("Fetch error:", err); return []; }
     }
-
     async function apiAddTimer(name, duration) {
         const res = await fetch(`${apiBase}/timers`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -38,33 +49,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (!res.ok) alert("Failed to add timer");
     }
-
     async function apiDeleteTimer(id) {
         await fetch(`${apiBase}/timers/${id}`, { method: 'DELETE' });
     }
 
-    // --- RENDER FUNCTION (Updated with filtering logic) ---
+    // --- MAIN REFRESH FUNCTION ---
+    async function refreshAllTimers() {
+        stopAllTimers();
+        const allTimersFromServer = await apiFetchTimers();
+        
+        // ✅ NEW: Filter out timers that have been dismissed
+        const dismissedIds = getDismissedIds();
+        timersState = allTimersFromServer.filter(timer => !dismissedIds.includes(timer.id));
+        
+        renderTimers();
+        startClientSideCountdown();
+    }
+
+    // --- RENDER FUNCTION ---
     function renderTimers() {
         timersContainer.innerHTML = '';
-
-        // ✅ NEW: Filter timers based on the 'showFinished' state
-        const timersToRender = timersState.filter(timer => {
-            const isFinished = timer.remaining_seconds <= 0;
-            return !isFinished || showFinished; // Always show active, or show all if toggled on
-        });
-
-        if (timersToRender.length === 0) {
-            const message = showFinished ? "No active timers. Add one below!" : "All active timers have finished!";
-            timersContainer.innerHTML = `<p class="text-center text-slate-400 text-base mt-10 col-span-full">${message}</p>`;
+        if (timersState.length === 0) {
+            timersContainer.innerHTML = `<p class="text-center text-slate-400 text-base mt-10 col-span-full">No timers to display. Add one below!</p>`;
             return;
         }
 
-        timersToRender.forEach(timer => {
+        timersState.forEach(timer => {
             const isDone = timer.remaining_seconds <= 0;
             const div = document.createElement('div');
             div.id = `timer-${timer.id}`;
             div.className = `timer-card ${isDone ? 'finished' : ''} glass-card p-4 rounded-lg shadow-lg flex flex-col gap-2 transition-all`;
-
             const total = timer.total_seconds || 1;
             const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
 
@@ -78,21 +92,44 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="w-full bg-stone-800 h-2 rounded overflow-hidden">
               <div class="h-full bg-amber-500 transition-all duration-1000 ease-linear" style="width: ${percent}%"></div>
-            </div>
-          `;
+            </div>`;
             timersContainer.appendChild(div);
         });
     }
 
-    // --- TOGGLE BUTTON (Replaces the old 'clear' button logic) ---
-    toggleFinishedBtn.addEventListener('click', () => {
-        showFinished = !showFinished; // Flip the state
-        toggleFinishedBtn.textContent = showFinished ? 'Hide Finished' : 'Show Finished';
-        renderTimers(); // Re-render the list with the new filter
+    // --- EVENT HANDLERS ---
+    
+    // ✅ NEW: Smarter logic for the '✖' button
+    timersContainer.addEventListener('click', async e => {
+        if (e.target.classList.contains('delete-btn')) {
+            const timerId = parseInt(e.target.dataset.id);
+            const timer = timersState.find(t => t.id === timerId);
+            
+            if (timer && timer.remaining_seconds > 0) {
+                // If the timer is ACTIVE, delete it from the database
+                if (confirm(`Are you sure you want to delete the active timer "${timer.name}"?`)) {
+                    await apiDeleteTimer(timerId);
+                }
+            } else {
+                // If the timer is FINISHED, just dismiss it from view
+                addDismissedId(timerId);
+            }
+            await refreshAllTimers();
+        }
+    });
+
+    // ✅ NEW: Logic for the "Clear Finished" button to dismiss all
+    clearFinishedBtn.addEventListener('click', async () => {
+        const finishedTimers = timersState.filter(t => t.remaining_seconds <= 0);
+        if (finishedTimers.length === 0) return;
+        
+        if (confirm(`Are you sure you want to clear ${finishedTimers.length} finished timer(s) from view?`)) {
+            finishedTimers.forEach(timer => addDismissedId(timer.id));
+            await refreshAllTimers();
+        }
     });
 
     // --- All other functions and event listeners remain the same ---
-    // (For brevity, only the changed/new parts are shown in detail, the rest is included below)
     
     function formatRemaining(sec) {
         if (sec <= 0) return '✅ Finished!';
@@ -105,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function parseSmartDuration(str) {
         const clean = str.trim().toLowerCase();
-        if (/^\d+$/.test(clean)) return `0d0h${clean}m`; // Handle plain numbers as minutes
+        if (/^\d+$/.test(clean)) return `0d0h${clean}m`;
         let days = 0, hours = 0, minutes = 0;
         const regex = /(\d+)\s*(d|h|m)/g;
         let match;
@@ -144,14 +181,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function startClientSideCountdown() {
         timersState.forEach(timer => {
             if (timer.remaining_seconds > 0) {
-                // Ensure total_seconds is set for timers fetched from the server
                 if (!timer.total_seconds) {
                     timer.total_seconds = timer.remaining_seconds;
                 }
                 timer.intervalId = setInterval(() => {
                     timer.remaining_seconds--;
                     updateTimerDisplay(timer);
-                    if (timer.remaining_seconds < 0) { // Use < 0 to ensure it hits zero
+                    if (timer.remaining_seconds < 0) {
                         clearInterval(timer.intervalId);
                         refreshAllTimers();
                     }
@@ -168,13 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
         text.textContent = formatRemaining(timer.remaining_seconds);
         const percent = Math.max(0, (timer.remaining_seconds / timer.total_seconds) * 100);
         progress.style.width = `${percent}%`;
-    }
-
-    async function refreshAllTimers() {
-        stopAllTimers();
-        timersState = await apiFetchTimers();
-        renderTimers();
-        startClientSideCountdown();
     }
 
     form.addEventListener('submit', async (e) => {
@@ -198,13 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.disabled = false;
             submitIcon.classList.remove('hidden');
             submitSpinner.classList.add('hidden');
-        }
-    });
-
-    timersContainer.addEventListener('click', async e => {
-        if (e.target.classList.contains('delete-btn')) {
-            await apiDeleteTimer(e.target.dataset.id);
-            await refreshAllTimers();
         }
     });
 
