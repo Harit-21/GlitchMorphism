@@ -18,14 +18,12 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 
 # ========== Configuration ==========
-# NOTE: DATABASE_URL should be set in your environment (e.g., on Render)
-# Example: "postgresql://user:password@host:port/database"
 DATABASE_URL = os.environ.get("DATABASE_URL")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 CHECK_INTERVAL_SECONDS = int(os.environ.get("CHECK_INTERVAL_SECONDS", 15))
+NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 
-# Get paths for static files based on a /backend and /static structure
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(backend_dir)
 STATIC_PATH = os.path.join(root_dir, 'static')
@@ -43,10 +41,11 @@ class Timer(Base):
     __tablename__ = "timers"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    end_time = Column(BigInteger, nullable=False) # Store as Unix timestamp for timezone simplicity
+    start_time = Column(BigInteger, nullable=False)  # ✅ ADDED
+    end_time = Column(BigInteger, nullable=False)
     notified = Column(Boolean, default=False, nullable=False)
 
-# Dependency to get a DB session for each API request
+# Dependency to get a DB session
 def get_db():
     db = SessionLocal()
     try:
@@ -69,9 +68,10 @@ class TimerOut(BaseModel):
     name: str
     notified: bool
     remaining_seconds: int
+    total_seconds: int  # ✅ ADDED
 
 # ========== App Setup ==========
-app = FastAPI(title="Builder Timer Notifier")
+app = FastAPI(title="Notifimers")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
 
@@ -81,7 +81,7 @@ def parse_duration(s: str) -> timedelta:
     s = s.strip().lower()
     if s.isdigit(): return timedelta(minutes=int(s))
     m = DURATION_RE.fullmatch(s)
-    if not m: raise ValueError("Invalid duration format. Use '1d 2h 30m', '90m', etc.")
+    if not m: raise ValueError("Invalid duration format")
     days = int(m.group(1)) if m.group(1) else 0
     hours = int(m.group(2)) if m.group(2) else 0
     minutes = int(m.group(3)) if m.group(3) else 0
@@ -94,12 +94,32 @@ def send_telegram_message(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         r = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
-        if r.status_code != 200:
-            print(f"Telegram send failed ({r.status_code}): {r.text}")
         return r.status_code == 200
     except Exception as e:
         print(f"Telegram send exception: {e}")
         return False
+
+def send_ntfy_alarm(title: str):
+    """Sends a high-priority notification to a ntfy.sh topic."""
+    if not NTFY_TOPIC:
+        print("Ntfy.sh topic not configured. Skipping alarm.")
+        return False
+    try:
+        # This sends the web request to ntfy.sh
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=f"Your timer for '{title}' is complete!",
+            headers={
+                "Title": "⏰ Timer Finished! ⏰",
+                "Priority": "max",  # This is the key to making it a loud alarm
+                "Tags": "alarm_clock" # This adds a nice icon
+            }
+        )
+        print(f"Ntfy.sh alarm sent for '{title}'.")
+        return True
+    except Exception as e:
+        print(f"Ntfy.sh exception: {e}")
+        return False        
 
 # ========== API Endpoints ==========
 @app.on_event("startup")
@@ -123,8 +143,9 @@ def get_timers(db: Session = Depends(get_db)):
     response_items = []
     for t in timers_db:
         remaining = t.end_time - now_ts
+        total = t.end_time - t.start_time  # ✅ CHANGED
         response_items.append(
-            TimerOut(id=t.id, name=t.name, notified=t.notified, remaining_seconds=max(0, remaining))
+            TimerOut(id=t.id, name=t.name, notified=t.notified, remaining_seconds=max(0, remaining), total_seconds=total)
         )
     return response_items
 
@@ -135,19 +156,23 @@ def add_timer(timer_in: TimerIn, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    end_time_dt = datetime.utcnow() + delta
+    # ✅ CHANGED: Calculate both start and end times
+    start_time_dt = datetime.utcnow()
+    end_time_dt = start_time_dt + delta
+    start_time_ts = int(start_time_dt.timestamp())
     end_time_ts = int(end_time_dt.timestamp())
     
-    new_timer = Timer(name=timer_in.name, end_time=end_time_ts)
+    new_timer = Timer(name=timer_in.name, start_time=start_time_ts, end_time=end_time_ts)
     db.add(new_timer)
     db.commit()
-    db.refresh(new_timer) # Get the ID and other defaults from the DB
+    db.refresh(new_timer)
     
     return TimerOut(
         id=new_timer.id,
         name=new_timer.name,
         notified=new_timer.notified,
-        remaining_seconds=max(0, new_timer.end_time - int(datetime.utcnow().timestamp()))
+        remaining_seconds=max(0, new_timer.end_time - int(datetime.utcnow().timestamp())),
+        total_seconds=(new_timer.end_time - new_timer.start_time)
     )
 
 @app.delete("/timers/{timer_id}", status_code=204)
@@ -157,31 +182,34 @@ def delete_timer(timer_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Timer not found")
     db.delete(timer_to_delete)
     db.commit()
-    return None # Return no content on success
+    return None
 
 # ========== Background Checker ==========
 def background_checker():
-    print("Background checker started. Interval:", CHECK_INTERVAL_SECONDS, "seconds.")
+    print("Background checker started...")
     while True:
-        # Use a new session for each check to ensure data is fresh and isolated
         db = SessionLocal()
         try:
             now_ts = int(datetime.utcnow().timestamp())
             timers_to_notify = db.query(Timer).filter(Timer.notified == False, Timer.end_time <= now_ts).all()
             
             for timer in timers_to_notify:
-                msg = f"⏰ '{timer.name}' DONE!".upper()
-                sent = send_telegram_message(msg)
-                if sent:
-                    print(f"Telegram sent for {timer.name}")
+                telegram_msg = f"⏰ '{timer.name}' DONE!".upper()
+                
+                # Send both a silent Telegram message AND a loud ntfy.sh alarm
+                sent_telegram = send_telegram_message(telegram_msg)
+                sent_alarm = send_ntfy_alarm(timer.name)
+                
+                # If either notification succeeds, mark the timer as notified
+                if sent_telegram or sent_alarm:
                     timer.notified = True
                     db.commit()
                 else:
-                    print(f"Failed to send Telegram for {timer.name}")
+                    print(f"Failed to send any notification for {timer.name}")
         except Exception as e:
             print(f"Error in background_checker: {e}")
             db.rollback()
         finally:
-            db.close() # Always close the session
+            db.close()
             
         time.sleep(CHECK_INTERVAL_SECONDS)
