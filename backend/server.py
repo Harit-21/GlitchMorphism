@@ -132,8 +132,8 @@ def parse_ocr_text_and_create_timers(text: str, db: Session):
         print("Could not isolate text block, parsing whole text.")
 
     # A simpler regex, designed to run on a single line at a time
-    #timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
-    timer_regex = re.compile(r"^([^\d]+)(.+[dhm])$", re.MULTILINE | re.IGNORECASE)
+    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
+    # timer_regex = re.compile(r"^([^\d]+)(.+[dhm])$", re.MULTILINE | re.IGNORECASE)
     
     # Process the relevant text block line by line
     for line in relevant_text.strip().split('\n'):
