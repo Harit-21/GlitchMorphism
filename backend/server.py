@@ -110,7 +110,7 @@ def send_ntfy_alarm(title: str):
             f"https://ntfy.sh/{NTFY_TOPIC}",
             data=f"Your timer for '{title}' is complete!",
             headers={
-                "Title": "⏰ Timer Finished! ⏰",
+                "Title": "Timer Finished!",
                 "Priority": "max",  # This is the key to making it a loud alarm
                 "Tags": "alarm_clock" # This adds a nice icon
             }
