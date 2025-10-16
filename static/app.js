@@ -19,12 +19,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const pickers = { days: document.getElementById('days-picker'), hours: document.getElementById('hours-picker'), minutes: document.getElementById('minutes-picker') };
     const uploadInput = document.getElementById('screenshot-upload');
     const uploadStatus = document.getElementById('upload-status');
+     const toastContainer = document.getElementById('toast-container');
 
     // ✅ ADDED: New bulk action elements
     const bulkActionsContainer = document.getElementById('bulk-actions');
     const reduceMinutesInput = document.getElementById('reduce-minutes-input');
     const reduceTimeBtn = document.getElementById('reduce-time-btn');
     const selectionCountEl = document.getElementById('selection-count');
+    const selectAllBtn = document.getElementById('select-all-btn');
     const deselectAllBtn = document.getElementById('deselect-all-btn');
 
     // --- API FUNCTIONS ---
@@ -90,24 +92,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT HANDLERS ---
     timersContainer.addEventListener('click', async e => {
-        const target = e.target;
-        if (target.classList.contains('delete-btn')) {
-            const timerId = parseInt(target.dataset.id);
-            const timer = timersState.find(t => t.id === timerId);
+        const card = e.target.closest('.timer-card');
+        if (!card) return;
+
+        const timerId = parseInt(card.dataset.id);
+        const timer = timersState.find(t => t.id === timerId);
+        const checkbox = card.querySelector('.timer-checkbox');
+
+        if (e.target.classList.contains('delete-btn')) {
+            // Stop card click from firing when deleting
+            e.stopPropagation(); 
             if (timer && timer.remaining_seconds > 0) {
                 if (confirm(`Are you sure you want to delete the active timer "${timer.name}"?`)) {
                     await apiDeleteTimer(timerId);
+                    showToast(`Timer "${timer.name}" deleted.`);
+                    await refreshAllTimers();
                 }
             } else if (timer) {
                 await apiClearTimer(timerId);
+                showToast(`Finished timer "${timer.name}" cleared.`);
+                await refreshAllTimers();
             }
-            await refreshAllTimers();
-        }
-        // ✅ ADDED: Handle checkbox clicks
-        else if (target.classList.contains('timer-checkbox')) {
-            const timerId = parseInt(target.dataset.id);
-            const card = target.closest('.timer-card');
-            if (target.checked) {
+        } else {
+            // Handle card click to toggle selection
+            if (checkbox.disabled) return;
+            checkbox.checked = !checkbox.checked; // Toggle the checkbox state
+
+            if (checkbox.checked) {
                 if (!selectedTimerIds.includes(timerId)) selectedTimerIds.push(timerId);
                 card.classList.add('selected');
             } else {
@@ -117,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateBulkActionsUI();
         }
     });
-
+    
     clearFinishedBtn.addEventListener('click', async () => {
         const finishedTimers = timersState.filter(t => t.remaining_seconds <= 0);
         if (finishedTimers.length === 0) return;
@@ -128,7 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ✅ ADDED: Event listener for the new "Reduce Time" button
     reduceTimeBtn.addEventListener('click', async () => {
         const minutes = parseInt(reduceMinutesInput.value);
         if (isNaN(minutes) || minutes <= 0) {
@@ -136,10 +146,26 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (selectedTimerIds.length === 0) return;
-
+        const count = selectedTimerIds.length;
         await apiReduceTime(selectedTimerIds, minutes);
-        reduceMinutesInput.value = ''; // Clear input
-        await refreshAllTimers(); // This will also clear selection and hide the panel
+        reduceMinutesInput.value = '';
+        await refreshAllTimers();
+        showToast(`Time reduced by ${minutes} min for ${count} timer(s).`);
+    });
+
+    selectAllBtn.addEventListener('click', () => {
+        const activeTimers = timersState.filter(t => t.remaining_seconds > 0);
+        activeTimers.forEach(timer => {
+            if (!selectedTimerIds.includes(timer.id)) {
+                selectedTimerIds.push(timer.id);
+            }
+            const card = document.getElementById(`timer-${timer.id}`);
+            if (card) {
+                card.classList.add('selected');
+                card.querySelector('.timer-checkbox').checked = true;
+            }
+        });
+        updateBulkActionsUI();
     });
 
     // ✅ ADDED: Event listener to deselect all timers
@@ -153,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- UI & HELPER FUNCTIONS ---
-    // ✅ ADDED: Show/hide bulk actions panel
     function updateBulkActionsUI() {
         if (selectedTimerIds.length > 0) {
             selectionCountEl.textContent = `${selectedTimerIds.length} selected`;
@@ -163,7 +188,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ✅ MODIFIED: Added checkbox to the timer card template
+
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        const bgColor = type === 'error' ? 'bg-red-500' : 'bg-emerald-600';
+        toast.className = `toast ${bgColor} text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-lg mb-2`;
+        toast.textContent = message;
+        toastContainer.appendChild(toast);
+        setTimeout(() => { toast.remove(); }, 4000);
+    }
+
+    function updateBulkActionsUI() {
+        if (selectedTimerIds.length > 0) {
+            selectionCountEl.textContent = `${selectedTimerIds.length} selected`;
+            bulkActionsContainer.classList.remove('hidden');
+        } else {
+            bulkActionsContainer.classList.add('hidden');
+        }
+    }
+    
     function renderTimers() {
         timersContainer.innerHTML = '';
         if (timersState.length === 0) {
@@ -174,7 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const isDone = timer.remaining_seconds <= 0;
             const div = document.createElement('div');
             div.id = `timer-${timer.id}`;
-            div.className = `timer-card ${isDone ? 'finished' : ''} glass-card p-4 rounded-lg shadow-lg flex flex-col gap-3 transition-all`;
+            div.className = `timer-card ${isDone ? 'finished' : 'cursor-pointer'} glass-card p-4 rounded-lg shadow-lg flex flex-col gap-3 transition-all`;
+            div.dataset.id = timer.id;
             const total = timer.total_seconds || 1;
             const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
             div.innerHTML = `
