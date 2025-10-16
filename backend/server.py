@@ -7,6 +7,7 @@ import requests
 import re
 import json
 import io
+import base64
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
@@ -72,17 +73,21 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
 
 # ========== Google Cloud Vision Setup ==========
-GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+GOOGLE_CREDENTIALS_BASE64 = os.environ.get("GOOGLE_CREDENTIALS_BASE64")
 vision_client = None
-if GOOGLE_CREDENTIALS_JSON:
+if GOOGLE_CREDENTIALS_BASE64:
     try:
-        credentials_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+        # Decode the Base64 string back to the original JSON string
+        credentials_json = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
+        credentials_info = json.loads(credentials_json)
+        
         google_credentials = service_account.Credentials.from_service_account_info(credentials_info)
         vision_client = vision.ImageAnnotatorClient(credentials=google_credentials)
+        print("Google Cloud credentials loaded successfully.")
     except Exception as e:
-        print(f"ERROR: Could not load Google credentials: {e}")
+        print(f"ERROR: Could not load/decode Google credentials: {e}")
 else:
-    print("WARNING: Google Cloud credentials not found. OCR will not work.")
+    print("WARNING: GOOGLE_CREDENTIALS_BASE64 not found. OCR will not work.")
 
 
 # ========== Utility Functions ==========
