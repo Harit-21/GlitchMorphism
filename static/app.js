@@ -1,33 +1,37 @@
 document.addEventListener('DOMContentLoaded', () => {
     let timersState = [];
-    let selectedTimerIds = []; // ✅ ADDED: State for selected timers
+    let selectedTimerIds = [];
     let selectedTime = { days: 0, hours: 0, minutes: 0 };
     const apiBase = '';
+    let countdownInterval;
 
-    const timersContainer = document.getElementById('timers');
-    const form = document.getElementById('add-timer-form');
-    const nameInput = document.getElementById('name-input');
-    const durationInput = document.getElementById('duration-input');
-    const togglePickerBtn = document.getElementById('toggle-picker-btn');
-    const pickerContainer = document.getElementById('picker-container-wrapper');
-    const clearNameBtn = document.getElementById('clear-name-btn');
-    const submitBtn = document.getElementById('submit-btn');
-    const submitIcon = document.getElementById('submit-icon');
-    const submitSpinner = document.getElementById('submit-spinner');
-    const quickBtns = document.querySelectorAll('.quick-btn');
-    const clearFinishedBtn = document.getElementById('clear-finished-btn');
-    const pickers = { days: document.getElementById('days-picker'), hours: document.getElementById('hours-picker'), minutes: document.getElementById('minutes-picker') };
-    const uploadInput = document.getElementById('screenshot-upload');
-    const uploadStatus = document.getElementById('upload-status');
-     const toastContainer = document.getElementById('toast-container');
-
-    // ✅ ADDED: New bulk action elements
-    const bulkActionsContainer = document.getElementById('bulk-actions');
-    const reduceMinutesInput = document.getElementById('reduce-minutes-input');
-    const reduceTimeBtn = document.getElementById('reduce-time-btn');
-    const selectionCountEl = document.getElementById('selection-count');
-    const selectAllBtn = document.getElementById('select-all-btn');
-    const deselectAllBtn = document.getElementById('deselect-all-btn');
+    // DOM Elements
+    const elements = {
+        timers: document.getElementById('timers'),
+        form: document.getElementById('add-timer-form'),
+        nameInput: document.getElementById('name-input'),
+        durationInput: document.getElementById('duration-input'),
+        togglePickerBtn: document.getElementById('toggle-picker-btn'),
+        pickerContainer: document.getElementById('picker-container'),
+        clearNameBtn: document.getElementById('clear-name-btn'),
+        submitBtn: document.getElementById('submit-btn'),
+        submitIcon: document.getElementById('submit-icon'),
+        submitSpinner: document.getElementById('submit-spinner'),
+        clearFinishedBtn: document.getElementById('clear-finished-btn'),
+        bulkActions: document.getElementById('bulk-actions'),
+        reduceMinutesInput: document.getElementById('reduce-minutes-input'),
+        reduceTimeBtn: document.getElementById('reduce-time-btn'),
+        selectionCount: document.getElementById('selection-count'),
+        selectAllBtn: document.getElementById('select-all-btn'), // ADDED
+        deselectAllBtn: document.getElementById('deselect-all-btn'),
+        uploadInput: document.getElementById('screenshot-upload'),
+        uploadStatus: document.getElementById('upload-status'),
+        pickers: {
+            days: document.getElementById('days-picker'),
+            hours: document.getElementById('hours-picker'),
+            minutes: document.getElementById('minutes-picker')
+        }
+    };
 
     // --- API FUNCTIONS ---
     async function apiFetchTimers() {
@@ -44,12 +48,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function apiClearTimer(id) {
         await fetch(`${apiBase}/timers/${id}/clear`, { method: 'POST' });
     }
-    // ✅ ADDED: New API function to reduce time
     async function apiReduceTime(timer_ids, minutes) {
         const res = await fetch(`${apiBase}/timers/reduce-time`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timer_ids, minutes }) });
         if (!res.ok) alert("Failed to reduce time for timers.");
     }
-
     async function apiUploadScreenshot(file) {
         const formData = new FormData();
         formData.append("file", file);
@@ -61,201 +63,249 @@ document.addEventListener('DOMContentLoaded', () => {
         return await res.json();
     }
 
-    uploadInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        uploadStatus.textContent = 'Processing screenshot...';
-        uploadStatus.classList.remove('hidden');
+    // --- MAIN REFRESH & RENDER ---
+    async function refreshAllTimers() {
+        timersState = await apiFetchTimers();
+        selectedTimerIds = [];
+        updateBulkActionsUI();
+        renderTimers();
+        startCountdown();
+    }
+
+    function renderTimers() {
+        if (timersState.length === 0) {
+            elements.timers.innerHTML = '<div class="empty-state">No active timers. Add one below!</div>';
+            return;
+        }
+        elements.timers.innerHTML = timersState.map(timer => {
+            const isDone = timer.remaining_seconds <= 0;
+            const isSelected = selectedTimerIds.includes(timer.id);
+            const total = timer.total_seconds || 1;
+            const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
+
+            return `
+                <div class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
+                    <div class="timer-header">
+                        <div class="timer-info">
+                            <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" />
+                            <div class="timer-content">
+                                <div class="timer-name">${timer.name}</div>
+                                <div class="timer-time font-mono ${isDone ? 'finished' : ''}">${formatRemaining(timer.remaining_seconds)}</div>
+                            </div>
+                        </div>
+                        <button class="delete-btn" data-id="${timer.id}">✖</button>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${percent}%"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- COUNTDOWN LOGIC ---
+    function startCountdown() {
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
+            let hasChanges = false;
+            timersState.forEach(timer => {
+                if (timer.remaining_seconds > 0) {
+                    timer.remaining_seconds--;
+                    hasChanges = true;
+                    if (timer.remaining_seconds <= 0) {
+                        refreshAllTimers();
+                    }
+                }
+            });
+            if (hasChanges) {
+                renderTimers();
+            }
+        }, 1000);
+    }
+
+    // --- UI & HELPER FUNCTIONS ---
+    function formatRemaining(sec) { if (sec <= 0) return '✅ Finished!'; const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return `${d}d ${h}h ${m}m ${s}s`; }
+    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d = 0, h = 0, m = 0; const r = /(\d+)\s*(d|h|m)/g; let match; while ((match = r.exec(clean))) { if (match[2] === 'd') d = parseInt(match[1]); else if (match[2] === 'h') h = parseInt(match[1]); else if (match[2] === 'm') m = parseInt(match[1]); } return `${d}d${h}h${m}m`; }
+    function updateBulkActionsUI() {
+        if (selectedTimerIds.length > 0) {
+            elements.selectionCount.textContent = `${selectedTimerIds.length} selected`;
+            elements.bulkActions.classList.remove('hidden');
+        } else {
+            elements.bulkActions.classList.add('hidden');
+        }
+    }
+
+    // --- EVENT LISTENERS ---
+    elements.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = elements.nameInput.value.trim();
+        const raw = elements.durationInput.value.trim();
+        if (!name || !raw) return alert("Name and duration required");
+
+        elements.submitBtn.disabled = true;
+        elements.submitIcon.style.display = 'none';
+        elements.submitSpinner.style.display = 'block';
+
         try {
-            const result = await apiUploadScreenshot(file);
-            console.log("Server response:", result);
-            uploadStatus.textContent = 'Success! Refreshing timers...';
+            const parsed = parseSmartDuration(raw);
+            await apiAddTimer(name, parsed);
+            elements.nameInput.value = '';
+            elements.durationInput.value = '';
+            elements.pickerContainer.classList.add('hidden');
+            elements.clearNameBtn.classList.add('hidden');
             await refreshAllTimers();
-        } catch (error) {
-            console.error(error);
-            uploadStatus.textContent = error.message;
+            elements.nameInput.focus();
         } finally {
-            setTimeout(() => { uploadStatus.classList.add('hidden'); }, 4000);
-            e.target.value = '';
+            elements.submitBtn.disabled = false;
+            elements.submitIcon.style.display = 'block';
+            elements.submitSpinner.style.display = 'none';
         }
     });
 
-    // --- MAIN REFRESH FUNCTION ---
-    async function refreshAllTimers() {
-        stopAllTimers();
-        timersState = await apiFetchTimers();
-        selectedTimerIds = []; // Clear selection on full refresh
-        updateBulkActionsUI();
-        renderTimers();
-        startClientSideCountdown();
-    }
-
-    // --- EVENT HANDLERS ---
-    timersContainer.addEventListener('click', async e => {
-        const card = e.target.closest('.timer-card');
+    elements.timers.addEventListener('click', async e => {
+        const target = e.target;
+        const card = target.closest('.timer-card');
         if (!card) return;
 
         const timerId = parseInt(card.dataset.id);
         const timer = timersState.find(t => t.id === timerId);
-        const checkbox = card.querySelector('.timer-checkbox');
 
-        if (e.target.classList.contains('delete-btn')) {
-            // Stop card click from firing when deleting
-            e.stopPropagation(); 
+        if (target.classList.contains('delete-btn')) {
             if (timer && timer.remaining_seconds > 0) {
                 if (confirm(`Are you sure you want to delete the active timer "${timer.name}"?`)) {
                     await apiDeleteTimer(timerId);
-                    showToast(`Timer "${timer.name}" deleted.`);
                     await refreshAllTimers();
                 }
             } else if (timer) {
                 await apiClearTimer(timerId);
-                showToast(`Finished timer "${timer.name}" cleared.`);
                 await refreshAllTimers();
             }
-        } else {
-            // Handle card click to toggle selection
-            if (checkbox.disabled) return;
-            checkbox.checked = !checkbox.checked; // Toggle the checkbox state
-
-            if (checkbox.checked) {
+        } else if (target.classList.contains('timer-checkbox')) {
+            if (target.checked) {
                 if (!selectedTimerIds.includes(timerId)) selectedTimerIds.push(timerId);
-                card.classList.add('selected');
             } else {
                 selectedTimerIds = selectedTimerIds.filter(id => id !== timerId);
-                card.classList.remove('selected');
             }
             updateBulkActionsUI();
+            renderTimers();
         }
     });
-    
-    clearFinishedBtn.addEventListener('click', async () => {
-        const finishedTimers = timersState.filter(t => t.remaining_seconds <= 0);
-        if (finishedTimers.length === 0) return;
-        if (confirm(`Are you sure you want to clear ${finishedTimers.length} finished timer(s) from view?`)) {
-            const clearPromises = finishedTimers.map(timer => apiClearTimer(timer.id));
-            await Promise.all(clearPromises);
+
+    elements.clearFinishedBtn.addEventListener('click', async () => {
+        const finished = timersState.filter(t => t.remaining_seconds <= 0);
+        if (finished.length === 0) return;
+        if (confirm(`Clear ${finished.length} finished timer(s)?`)) {
+            await Promise.all(finished.map(t => apiClearTimer(t.id)));
             await refreshAllTimers();
         }
     });
 
-    reduceTimeBtn.addEventListener('click', async () => {
-        const minutes = parseInt(reduceMinutesInput.value);
-        if (isNaN(minutes) || minutes <= 0) {
-            alert('Please enter a valid number of minutes to reduce.');
-            return;
-        }
+    elements.reduceTimeBtn.addEventListener('click', async () => {
+        const minutes = parseInt(elements.reduceMinutesInput.value);
+        if (isNaN(minutes) || minutes <= 0) return alert('Enter valid minutes');
         if (selectedTimerIds.length === 0) return;
-        const count = selectedTimerIds.length;
         await apiReduceTime(selectedTimerIds, minutes);
-        reduceMinutesInput.value = '';
+        elements.reduceMinutesInput.value = '';
         await refreshAllTimers();
-        showToast(`Time reduced by ${minutes} min for ${count} timer(s).`);
     });
 
-    selectAllBtn.addEventListener('click', () => {
+    // ADDED FUNCTION
+    function selectAll() {
         const activeTimers = timersState.filter(t => t.remaining_seconds > 0);
-        activeTimers.forEach(timer => {
-            if (!selectedTimerIds.includes(timer.id)) {
-                selectedTimerIds.push(timer.id);
-            }
-            const card = document.getElementById(`timer-${timer.id}`);
-            if (card) {
-                card.classList.add('selected');
-                card.querySelector('.timer-checkbox').checked = true;
-            }
-        });
+        selectedTimerIds = activeTimers.map(t => t.id);
         updateBulkActionsUI();
-    });
+        renderTimers();
+    }
 
-    // ✅ ADDED: Event listener to deselect all timers
-    deselectAllBtn.addEventListener('click', () => {
+    // ADDED EVENT LISTENER
+    elements.selectAllBtn.addEventListener('click', selectAll);
+
+    elements.deselectAllBtn.addEventListener('click', () => {
         selectedTimerIds = [];
-        document.querySelectorAll('.timer-card.selected').forEach(card => {
-            card.classList.remove('selected');
-            card.querySelector('.timer-checkbox').checked = false;
-        });
         updateBulkActionsUI();
+        renderTimers();
     });
 
-    // --- UI & HELPER FUNCTIONS ---
-    function updateBulkActionsUI() {
-        if (selectedTimerIds.length > 0) {
-            selectionCountEl.textContent = `${selectedTimerIds.length} selected`;
-            bulkActionsContainer.classList.remove('hidden');
-        } else {
-            bulkActionsContainer.classList.add('hidden');
+    elements.uploadInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        elements.uploadStatus.classList.remove('hidden');
+        elements.uploadStatus.textContent = 'Processing screenshot...';
+        try {
+            await apiUploadScreenshot(file);
+            elements.uploadStatus.textContent = 'Success! Refreshing timers...';
+            await refreshAllTimers();
+        } catch (error) {
+            elements.uploadStatus.textContent = error.message;
+        } finally {
+            setTimeout(() => { elements.uploadStatus.classList.add('hidden'); }, 4000);
+            e.target.value = '';
         }
-    }
+    });
 
-
-    function showToast(message, type = 'success') {
-        const toast = document.createElement('div');
-        const bgColor = type === 'error' ? 'bg-red-500' : 'bg-emerald-600';
-        toast.className = `toast ${bgColor} text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-lg mb-2`;
-        toast.textContent = message;
-        toastContainer.appendChild(toast);
-        setTimeout(() => { toast.remove(); }, 4000);
-    }
-
-    function updateBulkActionsUI() {
-        if (selectedTimerIds.length > 0) {
-            selectionCountEl.textContent = `${selectedTimerIds.length} selected`;
-            bulkActionsContainer.classList.remove('hidden');
-        } else {
-            bulkActionsContainer.classList.add('hidden');
-        }
-    }
-    
-    function renderTimers() {
-        timersContainer.innerHTML = '';
-        if (timersState.length === 0) {
-            timersContainer.innerHTML = `<p class="text-center text-slate-400 text-base mt-10 col-span-full">No active timers. Add one below!</p>`;
-            return;
-        }
-        timersState.forEach(timer => {
-            const isDone = timer.remaining_seconds <= 0;
-            const div = document.createElement('div');
-            div.id = `timer-${timer.id}`;
-            div.className = `timer-card ${isDone ? 'finished' : 'cursor-pointer'} glass-card p-4 rounded-lg shadow-lg flex flex-col gap-3 transition-all`;
-            div.dataset.id = timer.id;
-            const total = timer.total_seconds || 1;
-            const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
-            div.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <div class="flex items-center gap-3">
-                        <input type="checkbox" data-id="${timer.id}" class="timer-checkbox h-5 w-5 rounded bg-stone-700/50 border-stone-600 text-amber-500 focus:ring-amber-500 cursor-pointer">
-                        <div>
-                            <h2 class="font-bold text-lg">${timer.name}</h2>
-                            <p class="font-mono text-sm ${isDone ? 'text-emerald-400' : 'text-slate-300'}">${formatRemaining(timer.remaining_seconds)}</p>
-                        </div>
-                    </div>
-                    <button data-id="${timer.id}" class="delete-btn text-slate-500 hover:text-red-400 transition">✖</button>
-                </div>
-                <div class="w-full bg-stone-800 h-2 rounded overflow-hidden">
-                    <div class="h-full bg-amber-500 transition-all duration-1000 ease-linear" style="width: ${percent}%"></div>
-                </div>
-            `;
-            timersContainer.appendChild(div);
+    document.querySelectorAll('.quick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            elements.nameInput.value = btn.dataset.name;
+            elements.durationInput.value = btn.dataset.duration;
+            elements.clearNameBtn.classList.remove('hidden');
         });
+    });
+
+    elements.togglePickerBtn.addEventListener('click', () => {
+        elements.pickerContainer.classList.toggle('hidden');
+    });
+
+    elements.nameInput.addEventListener('input', () => {
+        elements.clearNameBtn.classList.toggle('hidden', !elements.nameInput.value);
+    });
+
+    elements.clearNameBtn.addEventListener('click', () => {
+        elements.nameInput.value = '';
+        elements.nameInput.focus();
+        elements.clearNameBtn.classList.add('hidden');
+    });
+
+    // --- Picker Logic ---
+    function populatePickers() {
+        const padding = '<div style="height: 3rem;"></div>';
+        for (const unit in elements.pickers) {
+            const limit = unit === 'days' ? 30 : unit === 'hours' ? 23 : 59;
+            let html = padding;
+            for (let i = 0; i <= limit; i++) { html += `<div class="picker-item">${i}</div>`; }
+            html += padding;
+            elements.pickers[unit].innerHTML = html;
+        }
     }
 
-    function formatRemaining(sec) { if (sec <= 0) return '✅ Finished!'; const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return `${d}d ${h}h ${m}m ${s}s`; }
-    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let days = 0, hours = 0, minutes = 0; const regex = /(\d+)\s*(d|h|m)/g; let match; while ((match = regex.exec(clean))) { const num = parseInt(match[1]); const unit = match[2]; if (unit === 'd') days = num; else if (unit === 'h') hours = num; else if (unit === 'm') minutes = num; } return `${days}d${hours}h${minutes}m`; }
-    function populatePickers() { const padding = '<div class="h-12 flex-shrink-0"></div>'; for (const unit in pickers) { const limit = unit === 'days' ? 30 : unit === 'hours' ? 23 : 59; let html = padding; for (let i = 0; i <= limit; i++) { html += `<div class="picker-item p-2 text-center">${i}</div>`; } html += padding; pickers[unit].innerHTML = html; } }
-    function updateDurationInputFromPicker() { const { days, hours, minutes } = selectedTime; durationInput.value = `${days}d ${hours}h ${minutes}m`; }
-    function stopAllTimers() { timersState.forEach(t => t.intervalId && clearInterval(t.intervalId)); }
-    function startClientSideCountdown() { timersState.forEach(timer => { if (timer.remaining_seconds > 0) { if (!timer.total_seconds) { timer.total_seconds = timer.remaining_seconds; } timer.intervalId = setInterval(() => { timer.remaining_seconds--; updateTimerDisplay(timer); if (timer.remaining_seconds < 0) { clearInterval(timer.intervalId); refreshAllTimers(); } }, 1000); } }); }
-    function updateTimerDisplay(timer) { const card = document.getElementById(`timer-${timer.id}`); if (!card) return; const text = card.querySelector('p'); const progress = card.querySelector('div.bg-amber-500'); text.textContent = formatRemaining(timer.remaining_seconds); const percent = Math.max(0, (timer.remaining_seconds / timer.total_seconds) * 100); progress.style.width = `${percent}%`; }
-    form.addEventListener('submit', async (e) => { e.preventDefault(); const name = nameInput.value.trim(); const raw = durationInput.value.trim(); if (!name || !raw) return alert("Name and duration required"); submitBtn.disabled = true; submitIcon.classList.add('hidden'); submitSpinner.classList.remove('hidden'); try { const parsed = parseSmartDuration(raw); await apiAddTimer(name, parsed); nameInput.value = ''; durationInput.value = ''; pickerContainer.classList.add('hidden'); clearNameBtn.classList.add('hidden'); await refreshAllTimers(); nameInput.focus(); } finally { submitBtn.disabled = false; submitIcon.classList.remove('hidden'); submitSpinner.classList.add('hidden'); } });
-    quickBtns.forEach(btn => { btn.addEventListener('click', () => { nameInput.value = btn.dataset.name; durationInput.value = btn.dataset.duration; clearNameBtn.classList.remove('hidden'); }); });
-    togglePickerBtn.addEventListener('click', () => { pickerContainer.classList.toggle('hidden'); });
-    nameInput.addEventListener('input', () => { clearNameBtn.classList.toggle('hidden', !nameInput.value); });
-    clearNameBtn.addEventListener('click', () => { nameInput.value = ''; nameInput.focus(); clearNameBtn.classList.add('hidden'); });
-    durationInput.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[^0-9dhm\s]/gi, ''); });
-    for (const unit in pickers) { let scrollTimeout; pickers[unit].addEventListener('scroll', () => { clearTimeout(scrollTimeout); scrollTimeout = setTimeout(() => { const picker = pickers[unit]; const top = picker.getBoundingClientRect().top; const center = top + picker.clientHeight / 2; let closest = null; let minDist = Infinity; Array.from(picker.children).forEach(item => { const itemTop = item.getBoundingClientRect().top; const dist = Math.abs(center - (itemTop + item.offsetHeight / 2)); if (dist < minDist) { minDist = dist; closest = item; } }); if (closest && !closest.classList.contains('selected')) { Array.from(picker.children).forEach(child => child.classList.remove('selected')); closest.classList.add('selected'); selectedTime[unit] = parseInt(closest.textContent); updateDurationInputFromPicker(); } }, 150); }); }
+    function setupPickerListeners() {
+        for (const unit in elements.pickers) {
+            let scrollTimeout;
+            elements.pickers[unit].addEventListener('scroll', () => {
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(() => {
+                    const picker = elements.pickers[unit];
+                    const rect = picker.getBoundingClientRect();
+                    const center = rect.top + rect.height / 2;
+                    let closest = null;
+                    let minDist = Infinity;
+                    Array.from(picker.children).forEach(item => {
+                        const itemRect = item.getBoundingClientRect();
+                        const dist = Math.abs(center - (itemRect.top + itemRect.height / 2));
+                        if (dist < minDist) { minDist = dist; closest = item; }
+                    });
+                    if (closest) {
+                        Array.from(picker.children).forEach(c => c.classList.remove('selected'));
+                        closest.classList.add('selected');
+                        selectedTime[unit] = parseInt(closest.textContent);
+                        elements.durationInput.value = `${selectedTime.days}d ${selectedTime.hours}h ${selectedTime.minutes}m`;
+                    }
+                }, 150);
+            });
+        }
+    }
 
     // --- INITIALIZATION ---
     populatePickers();
+    setupPickerListeners();
     refreshAllTimers();
 });
