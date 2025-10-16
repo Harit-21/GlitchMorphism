@@ -18,8 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
         submitSpinner: document.getElementById('submit-spinner'),
         clearFinishedBtn: document.getElementById('clear-finished-btn'),
         bulkActions: document.getElementById('bulk-actions'),
-        reduceMinutesInput: document.getElementById('reduce-minutes-input'),
-        reduceTimeBtn: document.getElementById('reduce-time-btn'),
+        adjustMinutesInput: document.getElementById('adjust-minutes-input'),
+        adjustTimeBtn: document.getElementById('adjust-time-btn'),
         selectionCount: document.getElementById('selection-count'),
         selectAllBtn: document.getElementById('select-all-btn'),
         deselectAllBtn: document.getElementById('deselect-all-btn'),
@@ -50,6 +50,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function apiReduceTime(timer_ids, minutes) {
         const res = await fetch(`${apiBase}/timers/reduce-time`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timer_ids, minutes }) });
         if (!res.ok) alert("Failed to reduce time for timers.");
+    }
+    async function apiAdjustTime(timer_ids, minutes) {
+        await fetch(`${apiBase}/timers/adjust-time`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timer_ids, minutes })
+        });
     }
     async function apiUploadScreenshot(file) {
         const formData = new FormData();
@@ -124,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- UI & HELPER FUNCTIONS ---
     function formatRemaining(sec) { if (sec <= 0) return '✅ Finished!'; const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return `${d}d ${h}h ${m}m ${s}s`; }
-    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d=0, h=0, m=0; const r = /(\d+)\s*(d|h|m)/g; let match; while((match=r.exec(clean))){ if(match[2]==='d')d=parseInt(match[1]); else if(match[2]==='h')h=parseInt(match[1]); else if(match[2]==='m')m=parseInt(match[1]); } return `${d}d${h}h${m}m`; }
+    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d = 0, h = 0, m = 0; const r = /(\d+)\s*(d|h|m)/g; let match; while ((match = r.exec(clean))) { if (match[2] === 'd') d = parseInt(match[1]); else if (match[2] === 'h') h = parseInt(match[1]); else if (match[2] === 'm') m = parseInt(match[1]); } return `${d}d${h}h${m}m`; }
     function updateBulkActionsUI() {
         if (selectedTimerIds.length > 0) {
             elements.selectionCount.textContent = `${selectedTimerIds.length} selected`;
@@ -133,14 +140,14 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.bulkActions.classList.add('hidden');
         }
     }
-    
+
     // ✅ ADDED: A dedicated function to handle selection logic
     function toggleSelection(timerId) {
         const timer = timersState.find(t => t.id === timerId);
         if (!timer || timer.remaining_seconds <= 0) {
             return; // Can't select finished timers
         }
-        
+
         const index = selectedTimerIds.indexOf(timerId);
         if (index > -1) {
             selectedTimerIds.splice(index, 1); // Deselect
@@ -159,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = elements.nameInput.value.trim();
         const raw = elements.durationInput.value.trim();
         if (!name || !raw) return alert("Name and duration required");
-        
+
         elements.submitBtn.disabled = true;
         elements.submitIcon.style.display = 'none';
         elements.submitSpinner.style.display = 'block';
@@ -187,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!card) return;
 
         const timerId = parseInt(card.dataset.id, 10);
-        
+
         // If delete button is clicked, handle deletion
         if (e.target.closest('.delete-btn')) {
             const timer = timersState.find(t => t.id === timerId);
@@ -225,7 +232,28 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedTimerIds = [];
         await refreshAllTimers();
     });
-    
+
+    elements.adjustTimeBtn.addEventListener('click', async () => {
+        const rawValue = elements.adjustMinutesInput.value.trim();
+        if (!/^[+-]?\d+$/.test(rawValue)) {
+            alert('Please enter a valid number (e.g., 10, -10, +10)');
+            return;
+        }
+        let minutes = parseInt(rawValue, 10);
+        if (isNaN(minutes)) {
+            alert('Invalid number format.');
+            return;
+        }
+        if (!rawValue.startsWith('+') && !rawValue.startsWith('-')) {
+            minutes = -Math.abs(minutes);
+        }
+        if (selectedTimerIds.length === 0) return;
+        await apiAdjustTime(selectedTimerIds, minutes);
+        elements.adjustMinutesInput.value = '';
+        selectedTimerIds = [];
+        await refreshAllTimers();
+    });
+
     function selectAll() {
         const activeTimers = timersState.filter(t => t.remaining_seconds > 0);
         selectedTimerIds = activeTimers.map(t => t.id);
@@ -257,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.value = '';
         }
     });
-    
+
     document.querySelectorAll('.quick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             elements.nameInput.value = btn.dataset.name;
@@ -318,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
-    
+
     // --- INITIALIZATION ---
     populatePickers();
     setupPickerListeners();
