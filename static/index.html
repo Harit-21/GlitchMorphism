@@ -717,14 +717,15 @@
 
             <div id="bulk-actions" class="bulk-actions glass-card hidden">
                 <span id="selection-count" class="selection-count"></span>
-                <input type="number" id="reduce-minutes-input" class="reduce-input" placeholder="Minutes" min="1" />
-                <button id="reduce-time-btn" class="btn btn-primary">
-                    <svg xmlns="http://www.w.org/2000/svg" class="icon" viewBox="0 0 20 20" fill="currentColor">
+                <input type="text" id="adjust-minutes-input" class="reduce-input" placeholder="± Mins"
+                    inputmode="decimal" />
+                <button id="adjust-time-btn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd"
                             d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.415L11 9.586V6z"
                             clip-rule="evenodd" />
                     </svg>
-                    Reduce
+                    Adjust
                 </button>
 
                 <div style="margin-left: auto; display: flex; gap: 0.5rem;">
@@ -748,9 +749,9 @@
         </section>
 
         <div class="quick-timers">
-            <button class="quick-btn" data-name="Pomodoro 🍅" data-duration="0d0h25m">🍅 25m</button>
-            <button class="quick-btn" data-name="Break ☕" data-duration="0d0h5m">☕ 5m</button>
-            <button class="quick-btn" data-name="Nap 😴" data-duration="0d0h25m">😴 25m</button>
+            <button class="quick-btn" data-name="Pets 🐇" data-duration="2d0h25m">🐇</button>
+            <button class="quick-btn" data-name="LabUp 🧪" data-duration="3d0h5m">🧪</button>
+            <button class="quick-btn" data-name="ApprenticeB ⚒️" data-duration="0d5h25m">⚒️</button>
         </div>
     </div>
 
