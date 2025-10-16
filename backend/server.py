@@ -113,56 +113,88 @@ def parse_duration(s: str) -> timedelta:
     if not d_match and not h_match and not m_match: raise ValueError("Invalid duration format")
     return timedelta(days=days, hours=hours, minutes=minutes)
 
-def parse_ocr_text_and_create_timers(text: str, db: Session):
+def parse_ocr_text_and_create_timers(text_annotations, db: Session):
     timers_found = []
-    relevant_text = text
+    
+    # 1. Isolate the relevant annotations between our start and end markers
     try:
-        # Use flexible markers without colons to be more robust
+        full_text_lower = text_annotations[0].description.lower()
         start_marker = "upgrades in progress"
         end_marker = "suggested upgrades"
         
-        start_index = text.lower().find(start_marker)
-        if start_index != -1:
-            start_index += len(start_marker)
-            end_index = text.lower().find(end_marker, start_index)
-            if end_index != -1:
-                relevant_text = text[start_index:end_index]
-                print("---- Isolated Relevant Text ----\n" + relevant_text.strip() + "\n-----------------------")
-    except Exception:
-        print("Could not isolate text block, parsing whole text.")
+        start_pos = full_text_lower.find(start_marker)
+        end_pos = full_text_lower.find(end_marker)
 
-    # A simpler regex, designed to run on a single line at a time
-    timer_regex = re.compile(r"^(.*?)\s+([\d\s\w:,-]+[dhm])$", re.MULTILINE | re.IGNORECASE)
-    # timer_regex = re.compile(r"^([^\d]+)(.+[dhm])$", re.MULTILINE | re.IGNORECASE)
-    
-    # Process the relevant text block line by line
-    for line in relevant_text.strip().split('\n'):
-        line = line.strip()
-        match = timer_regex.match(line)
-        if not match:
-            continue
+        if start_pos == -1 or end_pos == -1:
+             raise ValueError("Markers not found")
 
-        name = match.group(1).strip()
-        duration_str = match.group(2).strip()
+        # Find the Y-coordinates of the markers to define a vertical boundary
+        start_y = 0
+        end_y = float('inf')
+
+        for text in text_annotations[1:]:
+            if start_marker in text.description.lower():
+                start_y = text.bounding_poly.vertices[3].y # Bottom-left Y
+            if end_marker in text.description.lower():
+                end_y = text.bounding_poly.vertices[0].y # Top-left Y
         
-        # Skip empty names or lines that might be just numbers
-        if not name or name.isdigit():
-            continue
-            
-        print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
-        try:
-            delta = parse_duration(duration_str)
-            start_time_dt = datetime.utcnow()
-            end_time_dt = start_time_dt + delta
-            new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
-            db.add(new_timer)
-            timers_found.append(name)
-        except ValueError:
-            print(f"Could not parse duration '{duration_str}' for '{name}'")
+        relevant_annotations = [
+            ann for ann in text_annotations[1:] 
+            if (ann.bounding_poly.vertices[0].y > start_y and 
+                ann.bounding_poly.vertices[3].y < end_y)
+        ]
+        
+    except (ValueError, IndexError):
+        print("Could not find markers, parsing all annotations.")
+        relevant_annotations = text_annotations[1:]
+
+    # 2. Group annotations into lines
+    lines = {}
+    for ann in relevant_annotations:
+        avg_y = sum(v.y for v in ann.bounding_poly.vertices) / 4
+        found = False
+        for line_y, line_anns in lines.items():
+            if abs(line_y - avg_y) < 15:
+                line_anns.append(ann)
+                found = True
+                break
+        if not found:
+            lines[avg_y] = [ann]
+
+    # 3. For each line, separate into Name (left) and Duration (right) columns
+    if not lines: return []
+    
+    # Determine the vertical centerline of the text block
+    all_x = [v.x for ann in relevant_annotations for v in ann.bounding_poly.vertices]
+    center_x = (min(all_x) + max(all_x)) / 2
+
+    for line_y in sorted(lines.keys()):
+        line_anns = lines[line_y]
+        line_anns.sort(key=lambda a: a.bounding_poly.vertices[0].x)
+        
+        name_parts = [ann.description for ann in line_anns if ann.bounding_poly.vertices[0].x < center_x]
+        duration_parts = [ann.description for ann in line_anns if ann.bounding_poly.vertices[0].x >= center_x]
+
+        name = " ".join(name_parts).strip()
+        duration_str = " ".join(duration_parts).strip()
+
+        # Pre-process common OCR mistakes in the duration string
+        duration_str = re.sub(r'\bS\b', '5', duration_str, flags=re.IGNORECASE)
+
+        if name and any(c in duration_str.lower() for c in "dhm"):
+            print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
+            try:
+                delta = parse_duration(duration_str)
+                start_time_dt = datetime.utcnow()
+                end_time_dt = start_time_dt + delta
+                new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
+                db.add(new_timer)
+                timers_found.append(name)
+            except ValueError:
+                print(f"Could not parse duration '{duration_str}' for '{name}'")
 
     if timers_found:
         db.commit()
-        
     return timers_found
     
 def send_telegram_message(text: str):
@@ -255,7 +287,7 @@ async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = Fi
     if texts:
         full_text = reconstruct_text_by_lines(texts)
         print("---- OCR Full Text ----\n" + full_text + "\n-----------------------")
-        timers_created = parse_ocr_text_and_create_timers(full_text, db)
+        timers_created = parse_ocr_text_and_create_timers(texts, db)
         return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
     else: return {"message": "No text found in the image."}
 
