@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reduceMinutesInput: document.getElementById('reduce-minutes-input'),
         reduceTimeBtn: document.getElementById('reduce-time-btn'),
         selectionCount: document.getElementById('selection-count'),
-        selectAllBtn: document.getElementById('select-all-btn'), // ADDED
+        selectAllBtn: document.getElementById('select-all-btn'),
         deselectAllBtn: document.getElementById('deselect-all-btn'),
         uploadInput: document.getElementById('screenshot-upload'),
         uploadStatus: document.getElementById('upload-status'),
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- API FUNCTIONS ---
+    // --- API FUNCTIONS (No changes here) ---
     async function apiFetchTimers() {
         try { const res = await fetch(`${apiBase}/timers`); return res.ok ? await res.json() : []; }
         catch (err) { console.error("Fetch error:", err); return []; }
@@ -66,13 +66,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- MAIN REFRESH & RENDER ---
     async function refreshAllTimers() {
         timersState = await apiFetchTimers();
-        selectedTimerIds = [];
+        // Don't clear selection on every tick, only on full manual refresh actions
+        // selectedTimerIds = []; 
         updateBulkActionsUI();
         renderTimers();
         startCountdown();
     }
 
+    // ✅ FIXED: This function now generates the correct HTML for the UI
     function renderTimers() {
+        if (!elements.timers) return;
         if (timersState.length === 0) {
             elements.timers.innerHTML = '<div class="empty-state">No active timers. Add one below!</div>';
             return;
@@ -125,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- UI & HELPER FUNCTIONS ---
     function formatRemaining(sec) { if (sec <= 0) return '✅ Finished!'; const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return `${d}d ${h}h ${m}m ${s}s`; }
-    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d = 0, h = 0, m = 0; const r = /(\d+)\s*(d|h|m)/g; let match; while ((match = r.exec(clean))) { if (match[2] === 'd') d = parseInt(match[1]); else if (match[2] === 'h') h = parseInt(match[1]); else if (match[2] === 'm') m = parseInt(match[1]); } return `${d}d${h}h${m}m`; }
+    function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d=0, h=0, m=0; const r = /(\d+)\s*(d|h|m)/g; let match; while((match=r.exec(clean))){ if(match[2]==='d')d=parseInt(match[1]); else if(match[2]==='h')h=parseInt(match[1]); else if(match[2]==='m')m=parseInt(match[1]); } return `${d}d${h}h${m}m`; }
     function updateBulkActionsUI() {
         if (selectedTimerIds.length > 0) {
             elements.selectionCount.textContent = `${selectedTimerIds.length} selected`;
@@ -134,14 +137,14 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.bulkActions.classList.add('hidden');
         }
     }
-
+    
     // --- EVENT LISTENERS ---
     elements.form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = elements.nameInput.value.trim();
         const raw = elements.durationInput.value.trim();
         if (!name || !raw) return alert("Name and duration required");
-
+        
         elements.submitBtn.disabled = true;
         elements.submitIcon.style.display = 'none';
         elements.submitSpinner.style.display = 'block';
@@ -153,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.durationInput.value = '';
             elements.pickerContainer.classList.add('hidden');
             elements.clearNameBtn.classList.add('hidden');
+            selectedTimerIds = []; // Clear selection after adding
             await refreshAllTimers();
             elements.nameInput.focus();
         } finally {
@@ -196,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (finished.length === 0) return;
         if (confirm(`Clear ${finished.length} finished timer(s)?`)) {
             await Promise.all(finished.map(t => apiClearTimer(t.id)));
+            selectedTimerIds = []; // Clear selection after clearing
             await refreshAllTimers();
         }
     });
@@ -206,10 +211,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedTimerIds.length === 0) return;
         await apiReduceTime(selectedTimerIds, minutes);
         elements.reduceMinutesInput.value = '';
+        selectedTimerIds = []; // Clear selection after reducing
         await refreshAllTimers();
     });
-
-    // ADDED FUNCTION
+    
     function selectAll() {
         const activeTimers = timersState.filter(t => t.remaining_seconds > 0);
         selectedTimerIds = activeTimers.map(t => t.id);
@@ -217,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTimers();
     }
 
-    // ADDED EVENT LISTENER
     elements.selectAllBtn.addEventListener('click', selectAll);
 
     elements.deselectAllBtn.addEventListener('click', () => {
@@ -242,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.value = '';
         }
     });
-
+    
     document.querySelectorAll('.quick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             elements.nameInput.value = btn.dataset.name;
@@ -303,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
-
+    
     // --- INITIALIZATION ---
     populatePickers();
     setupPickerListeners();
