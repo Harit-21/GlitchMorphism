@@ -1,59 +1,607 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Notifimers</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Notifimers - Beautiful Timer App</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap"
         rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0118;
+            --bg-secondary: #1a0b2e;
+            --glass-bg: rgba(28, 15, 45, 0.6);
+            --glass-border: rgba(139, 92, 246, 0.2);
+            --amber-500: #f59e0b;
+            --amber-400: #fbbf24;
+            --amber-600: #d97706;
+            --purple-500: #8b5cf6;
+            --purple-600: #7c3aed;
+            --emerald-500: #10b981;
+            --red-500: #ef4444;
+            --slate-100: #f1f5f9;
+            --slate-300: #cbd5e1;
+            --slate-400: #94a3b8;
+            --slate-500: #64748b;
+            --slate-600: #475569;
+            --slate-700: #334155;
+            --slate-800: #1e293b;
+            --slate-900: #0f172a;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0c0a09;
-            background-image: radial-gradient(circle at top, #1c1917, #0c0a09 70%);
-            padding-bottom: 120px;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 50%, #16042e 100%);
+            background-attachment: fixed;
+            color: var(--slate-300);
+            min-height: 100vh;
+            padding: 1.5rem;
+            padding-bottom: 200px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+            animation: pulse 15s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 0.3;
+            }
+
+            50% {
+                transform: scale(1.1) rotate(180deg);
+                opacity: 0.5;
+            }
         }
 
         .font-mono {
             font-family: 'JetBrains Mono', monospace;
         }
 
+        .container {
+            max-width: 48rem;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            animation: fadeInDown 0.6s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--slate-100);
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+        }
+
+        h1 .highlight {
+            background: linear-gradient(135deg, var(--amber-400) 0%, var(--amber-600) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
         .glass-card {
-            background: rgba(28, 25, 23, 0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(41, 37, 36, 0.8);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card:hover {
+            border-color: rgba(139, 92, 246, 0.4);
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.15);
+        }
+
+        .upload-section {
+            margin-bottom: 1.5rem;
+            text-align: center;
+            animation: fadeIn 0.6s ease-out 0.1s backwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .upload-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(135deg, var(--purple-600) 0%, var(--purple-500) 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+        }
+
+        .upload-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
+        }
+
+        .upload-status {
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            color: var(--slate-400);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.6s ease-out 0.2s backwards;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--slate-100);
+        }
+
+        .clear-btn {
+            color: var(--slate-400);
+            font-size: 0.875rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: color 0.2s ease;
+        }
+
+        .clear-btn:hover {
+            color: var(--red-500);
+        }
+
+        .bulk-actions {
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            animation: slideDown 0.4s ease-out;
+        }
+
+        .bulk-actions.hidden {
+            display: none;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+                max-height: 0;
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+                max-height: 100px;
+            }
+        }
+
+        .selection-count {
+            font-weight: 700;
+            color: var(--amber-400);
+            white-space: nowrap;
+        }
+
+        .reduce-input {
+            width: 5rem;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--slate-700);
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            color: var(--slate-100);
+            font-size: 0.875rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--purple-600) 0%, var(--purple-500) 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        }
+
+        .icon {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+        .timers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .timer-card {
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes scaleIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
 
         .timer-card.finished {
-            background: rgba(5, 150, 105, 0.1);
+            background: rgba(16, 185, 129, 0.1);
             border-color: rgba(16, 185, 129, 0.3);
         }
 
         .timer-card.selected {
-            border-color: #f59e0b;
-            box-shadow: 0 0 0 2px #f59e0b80;
+            border-color: var(--amber-500);
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 8px 24px rgba(245, 158, 11, 0.2);
         }
 
-        .input-main:focus-within {
-            box-shadow: 0 0 0 2px #f59e0b;
+        .timer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
         }
 
-        .number-picker {
-            scroll-snap-type: y mandatory;
-            overflow-y: auto;
-            scroll-behavior: smooth;
+        .timer-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex: 1;
+        }
+
+        .timer-checkbox {
+            appearance: none;
+            width: 1.5rem;
+            height: 1.5rem;
+            background: rgba(71, 85, 105, 0.5);
+            border: 2px solid var(--slate-600);
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .timer-checkbox:checked {
+            background: var(--amber-500);
+            border-color: var(--amber-600);
+        }
+
+        .timer-checkbox:checked::after {
+            content: '';
+            position: absolute;
+            left: 0.375rem;
+            top: 0.125rem;
+            width: 0.375rem;
+            height: 0.75rem;
+            border: solid var(--slate-900);
+            border-width: 0 3px 3px 0;
+            transform: rotate(45deg);
+        }
+
+        .timer-name {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--slate-100);
+            margin-bottom: 0.25rem;
+        }
+
+        .timer-time {
+            font-size: 0.875rem;
+            color: var(--slate-400);
+        }
+
+        .timer-time.finished {
+            color: var(--emerald-500);
+            font-weight: 700;
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: var(--slate-500);
+            cursor: pointer;
+            padding: 0.25rem;
+            transition: all 0.2s ease;
+            border-radius: 0.25rem;
+        }
+
+        .delete-btn:hover {
+            color: var(--red-500);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 0.5rem;
+            background: var(--slate-800);
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--amber-600) 0%, var(--amber-400) 100%);
+            transition: width 1s linear;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            from {
+                transform: translateX(-100%);
+            }
+
+            to {
+                transform: translateX(100%);
+            }
+        }
+
+        .quick-timers {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            animation: fadeIn 0.6s ease-out 0.3s backwards;
+        }
+
+        .quick-btn {
+            background: linear-gradient(135deg, var(--amber-600) 0%, var(--amber-500) 100%);
+            color: var(--slate-900);
+            padding: 0.5rem 1.25rem;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+        }
+
+        .quick-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+
+        .input-section {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10, 1, 24, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            padding: 1.5rem;
+            z-index: 100;
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .input-container {
+            max-width: 48rem;
+            margin: 0 auto;
+        }
+
+        .input-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .input-wrapper {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem;
+            transition: all 0.3s ease;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--amber-500);
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+        }
+
+        .input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 0.875rem 1rem;
+            color: var(--slate-100);
+            font-size: 1rem;
+        }
+
+        .input:focus {
+            outline: none;
+        }
+
+        .input::placeholder {
+            color: var(--slate-500);
+        }
+
+        .input-btn {
+            background: transparent;
+            border: none;
+            color: var(--slate-500);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            display: flex;
+            transition: all 0.2s ease;
+        }
+
+        .input-btn:hover {
+            color: var(--amber-400);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .input-btn.hidden {
+            display: none;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, var(--amber-600) 0%, var(--amber-400) 100%);
+            color: var(--slate-900);
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .picker-wrapper {
+            margin-top: 1rem;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            position: relative;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .picker-wrapper.hidden {
+            display: none;
+        }
+
+        .picker-column {
+            text-align: center;
+            position: relative;
+        }
+
+        .picker-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--slate-400);
+            margin-bottom: 0.75rem;
+        }
+
+        .picker {
             height: 8rem;
+            overflow-y: auto;
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
             scrollbar-width: none;
-            -ms-overflow-style: none;
         }
 
-        .number-picker::-webkit-scrollbar {
+        .picker::-webkit-scrollbar {
             display: none;
         }
 
@@ -63,142 +611,82 @@
             align-items: center;
             justify-content: center;
             scroll-snap-align: center;
-            transition: all 0.2s ease-in-out;
-        }
-
-        .picker-item.selected {
-            color: #f59e0b;
-            font-weight: 700;
-            background-color: rgba(245, 158, 11, 0.1);
-            border-radius: 6px;
-            transform: scale(1.1);
-        }
-
-        .picker-container::after {
-            content: '';
-            position: absolute;
-            top: 45%;
-            left: 0;
-            right: 0;
-            height: 2.5rem;
-            margin-top: 0.25rem;
-            background: rgba(245, 158, 11, 0.05);
-            border-top: 1px solid rgba(245, 158, 11, 0.2);
-            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
-            pointer-events: none;
-            border-radius: 4px;
-            z-index: 10;
-        }
-
-        .picker-item {
-            transition: transform 0.3s ease, color 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             font-size: 1rem;
-            color: #999;
+            color: var(--slate-500);
+            cursor: pointer;
         }
 
         .picker-item.selected {
-            color: #f59e0b;
-            /* amber-500 */
-            font-weight: bold;
+            color: var(--amber-400);
+            font-weight: 700;
             font-size: 1.5rem;
             transform: scale(1.2);
         }
 
-        #days-picker,
-        #hours-picker,
-        #minutes-picker {
-            scroll-behavior: smooth;
-            scroll-snap-type: y mandatory;
-            overflow-y: auto;
-            max-height: 160px;
-            /* example */
-            position: relative;
-            scrollbar-width: none;
-            /* hide scrollbar for Firefox */
-        }
-
-        #days-picker::-webkit-scrollbar,
-        #hours-picker::-webkit-scrollbar,
-        #minutes-picker::-webkit-scrollbar {
-            display: none;
-            /* hide scrollbar for webkit */
-        }
-
-        /* Optional: overlay fade on top/bottom to emphasize center */
-        .picker-overlay {
-            pointer-events: none;
+        .picker-column::after {
+            content: '';
             position: absolute;
-            top: 0;
-            bottom: 0;
+            top: 50%;
             left: 0;
             right: 0;
-            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), transparent 25%, transparent 75%, rgba(255, 255, 255, 0.9));
-            z-index: 5;
+            height: 2.5rem;
+            transform: translateY(-50%);
+            background: rgba(245, 158, 11, 0.05);
+            border-top: 1px solid rgba(245, 158, 11, 0.2);
+            border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+            pointer-events: none;
+            border-radius: 0.375rem;
+            margin-top: 0.75rem;
         }
 
-        .custom-checkbox {
-            appearance: none;
-            -webkit-appearance: none;
-            height: 1.25rem;
-            width: 1.25rem;
-            min-width: 1.25rem;
-            background-color: rgba(55, 65, 81, 0.5);
-            border: 1px solid #4b5563;
-            border-radius: 4px;
-            display: inline-block;
-            position: relative;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--slate-400);
+            font-size: 1.125rem;
+            grid-column: 1 / -1;
         }
-        .custom-checkbox:checked {
-            background-color: #f59e0b;
-            border-color: #d97706;
-        }
-        .custom-checkbox:disabled {
-            background-color: rgba(55, 65, 81, 0.2);
-            border-color: #374151;
-            cursor: not-allowed;
-        }
-        .custom-checkbox:checked::after {
-            content: '';
-            display: block;
-            width: 0.35rem;
-            height: 0.7rem;
-            border: solid #0c0a09;
-            border-width: 0 3px 3px 0;
-            transform: rotate(45deg);
-            position: absolute;
-            left: 0.375rem;
-            top: 0.125rem;
-        }
-        
-        /* 🎨 Toast notification styles */
-        @keyframes fadeInOut {
-            0% { opacity: 0; transform: translateY(-20px); }
-            15% { opacity: 1; transform: translateY(0); }
-            85% { opacity: 1; transform: translateY(0); }
-            100% { opacity: 0; transform: translateY(-20px); }
-        }
-        .toast {
-            animation: fadeInOut 4s ease-in-out forwards;
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+                padding-bottom: 220px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .timers-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .input-row {
+                flex-direction: column;
+            }
+
+            .submit-btn {
+                width: 100%;
+            }
+
+            .bulk-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
         }
     </style>
 </head>
 
-<body class="text-slate-300 min-h-screen p-4 sm:p-6 flex flex-col items-center">
-    <div id="toast-container" class="fixed top-5 z-50"></div>
-    
-    <div id="app-container" class="max-w-xl w-full">
-        <header class="text-center mb-6">
-            <h1 class="text-3xl sm:text-4xl font-bold mb-2 text-slate-100">
-                <span class="text-amber-400">Notifi</span>mers
-            </h1>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="highlight">Notifi</span>mers</h1>
         </header>
 
-        <div id="upload-section" class="mb-4 text-center glass-card rounded-lg p-4">
-            <label for="screenshot-upload"
-                class="cursor-pointer bg-sky-600 hover:bg-sky-500 text-white font-semibold py-2 px-4 rounded-lg inline-flex items-center gap-2 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+        <div class="upload-section glass-card" style="padding: 1rem;">
+            <label for="screenshot-upload" class="upload-label">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="icon">
                     <path fill-rule="evenodd"
                         d="M1 5.25A2.25 2.25 0 0 1 3.25 3h13.5A2.25 2.25 0 0 1 19 5.25v9.5A2.25 2.25 0 0 1 16.75 17H3.25A2.25 2.25 0 0 1 1 14.75v-9.5Zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 0 0 .75-.75v-3.69l-2.72-2.72a.75.75 0 0 0-1.06 0L11 10l-2.22-2.22a.75.75 0 0 0-1.06 0L4.25 11.06l-1.75-1.75Z"
                         clip-rule="evenodd" />
@@ -206,122 +694,105 @@
                 </svg>
                 <span>Upload Screenshot</span>
             </label>
-            <input id="screenshot-upload" type="file" class="hidden" accept="image/*">
-            <p id="upload-status" class="text-sm text-slate-400 mt-2 hidden"></p>
+            <input type="file" id="screenshot-upload" accept="image/*" style="display: none;">
+            <p id="upload-status" class="upload-status hidden"></p>
         </div>
 
-        <div id="timers-section" class="mb-8">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-slate-200">Active Timers</h2>
-                <button id="clear-finished-btn" class="text-sm text-slate-400 hover:text-red-400 transition"
-                    title="Remove all finished timers">Clear Finished</button>
+        <section style="margin-bottom: 2rem;">
+            <div class="section-header">
+                <h2 class="section-title">Active Timers</h2>
+                <button id="clear-finished-btn" class="clear-btn" title="Remove all finished timers">Clear
+                    Finished</button>
             </div>
 
-            <div id="bulk-actions" class="hidden glass-card p-3 rounded-lg mb-4 flex items-center gap-2 sm:gap-3">
-                <span id="selection-count" class="text-sm font-semibold text-slate-300 mr-2 whitespace-nowrap"></span>
-                <input type="number" id="reduce-minutes-input" placeholder="Mins"
-                       class="w-16 bg-stone-900/50 border border-stone-700 rounded px-2 py-1 text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                       min="1" />
-                <button id="reduce-time-btn" title="Reduce Time"
-                        class="bg-sky-600 hover:bg-sky-500 text-white font-semibold py-1 px-3 rounded text-sm inline-flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
+            <div id="bulk-actions" class="bulk-actions glass-card hidden">
+                <span id="selection-count" class="selection-count"></span>
+                <input type="number" id="reduce-minutes-input" class="reduce-input" placeholder="Minutes" min="1" />
+                <button id="reduce-time-btn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.415L11 9.586V6z"
+                            clip-rule="evenodd" />
+                    </svg>
                     Reduce
                 </button>
-                <div class="ml-auto flex items-center gap-2">
-                    <button id="select-all-btn" title="Select All Active"
-                            class="text-slate-400 hover:text-white p-1.5 rounded-md">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zM2 15a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z" /></svg>
-                    </button>
-                    <button id="deselect-all-btn" title="Deselect All" class="text-slate-400 hover:text-white p-1.5 rounded-md">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                    </button>
+
+                <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+                    <button id="select-all-btn" class="btn" title="Select All Active"
+                        style="color: var(--slate-300);">Select All</button>
+                    <button id="deselect-all-btn" class="btn" style="color: var(--slate-400);">Deselect All</button>
                 </div>
             </div>
 
-            <div id="timers" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-        </div>
+            <div id="timers" class="timers-grid"></div>
+        </section>
 
-        <div class="mb-4 flex flex-wrap gap-2 justify-center">
-            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
-                data-name="Pomodoro 🍅" data-duration="0d0h25m">🍅 25m</button>
-            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
-                data-name="Break ☕" data-duration="0d0h5m">☕ 5m</button>
-            <button class="quick-btn bg-amber-600 hover:bg-amber-500 text-black font-semibold py-1 px-3 rounded"
-                data-name="Nap 😴" data-duration="0d0h25m">😴 25m</button>
+        <div class="quick-timers">
+            <button class="quick-btn" data-name="Pomodoro 🍅" data-duration="0d0h25m">🍅 25m</button>
+            <button class="quick-btn" data-name="Break ☕" data-duration="0d0h5m">☕ 5m</button>
+            <button class="quick-btn" data-name="Nap 😴" data-duration="0d0h25m">😴 25m</button>
         </div>
+    </div>
 
-        <div id="input-section"
-            class="fixed bottom-0 left-0 right-0 p-4 bg-stone-900/80 backdrop-blur-lg border-t border-stone-800">
-            <div class="max-w-xl mx-auto">
-                <form id="add-timer-form" class="space-y-3">
-                    <div class="input-main glass-card rounded-lg p-1 flex items-center gap-2">
-                        <input type="text" id="name-input" placeholder="What are you timing?" required
-                            class="w-full bg-transparent px-3 py-2 text-slate-100 focus:outline-none"
-                            autocomplete="off" />
-                        <button type="button" id="clear-name-btn"
-                            class="text-slate-500 hover:text-white transition-colors hidden mr-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-5 h-5"
+    <div class="input-section">
+        <div class="input-container">
+            <form id="add-timer-form" class="input-form">
+                <div class="input-wrapper">
+                    <input type="text" id="name-input" class="input" placeholder="What are you timing?" required
+                        autocomplete="off" />
+                    <button type="button" id="clear-name-btn" class="input-btn hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="icon" viewBox="0 0 20 20">
+                            <path
+                                d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="input-row">
+                    <div class="input-wrapper" style="flex: 1;">
+                        <input type="text" id="duration-input" class="input" placeholder="e.g., 1h 30m or 45" required
+                            autocomplete="off" inputmode="decimal" />
+                        <button type="button" id="toggle-picker-btn" class="input-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="icon"
                                 viewBox="0 0 20 20">
-                                <path
-                                    d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
+                                    clip-rule="evenodd" />
                             </svg>
                         </button>
                     </div>
-
-                    <div class="flex gap-3">
-                        <div class="input-main glass-card rounded-lg p-1 flex items-center gap-2 w-full">
-                            <input type="text" id="duration-input" placeholder="e.g., 1h 30m or 45" required
-                                class="w-full bg-transparent px-3 py-2 text-slate-100 focus:outline-none"
-                                autocomplete="off" inputmode="decimal" />
-                            <button type="button" id="toggle-picker-btn"
-                                class="text-slate-400 hover:text-amber-400 p-2 rounded-md transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-5 h-5"
-                                    viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd"
-                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                            </button>
-                        </div>
-
-                        <button type="submit" id="submit-btn"
-                            class="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 rounded-lg px-5 text-stone-900 font-bold shadow-lg flex items-center justify-center">
-                            <svg id="submit-icon" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="w-6 h-6"
-                                viewBox="0 0 20 20">
-                                <path
-                                    d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                            </svg>
-                            <svg id="submit-spinner" class="animate-spin h-6 w-6 hidden"
-                                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                    stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                                </path>
-                            </svg>
-                        </button>
-                    </div>
-                </form>
-
-                <div id="picker-container-wrapper"
-                    class="hidden relative picker-container glass-card rounded-lg p-4 grid grid-cols-3 gap-4 mt-3">
-                    <div class="text-center">
-                        <p class="font-semibold text-sm text-slate-400">Days</p>
-                        <div id="days-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
-                    </div>
-                    <div class="text-center">
-                        <p class="font-semibold text-sm text-slate-400">Hours</p>
-                        <div id="hours-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
-                    </div>
-                    <div class="text-center">
-                        <p class="font-semibold text-sm text-slate-400">Minutes</p>
-                        <div id="minutes-picker" class="number-picker h-32 overflow-y-scroll mt-2 rounded"></div>
-                    </div>
+                    <button type="submit" id="submit-btn" class="submit-btn">
+                        <svg id="submit-icon" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="icon"
+                            viewBox="0 0 20 20">
+                            <path
+                                d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                        </svg>
+                        <svg id="submit-spinner" class="icon spinner" style="display: none;"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                            </circle>
+                            <path class="opacity-75" fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+            </form>
+            <div id="picker-container" class="picker-wrapper glass-card hidden">
+                <div class="picker-column">
+                    <div class="picker-label">Days</div>
+                    <div id="days-picker" class="picker"></div>
+                </div>
+                <div class="picker-column">
+                    <div class="picker-label">Hours</div>
+                    <div id="hours-picker" class="picker"></div>
+                </div>
+                <div class="picker-column">
+                    <div class="picker-label">Minutes</div>
+                    <div id="minutes-picker" class="picker"></div>
                 </div>
             </div>
         </div>
     </div>
-
     <script src="/static/app.js"></script>
 </body>
 
