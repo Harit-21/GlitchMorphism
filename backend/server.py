@@ -128,27 +128,23 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
         end_marker = "suggested upgrades"
         
         start_pos = full_text_lower.find(start_marker)
-        end_pos = full_text_lower.find(end_marker)
+        end_pos = full_text_lower.find(end_marker, start_pos)
 
         if start_pos == -1 or end_pos == -1:
              raise ValueError("Markers not found")
 
-        # Find the Y-coordinates of the markers to define a vertical boundary
-        start_y = 0
-        end_y = float('inf')
-
+        start_y = 0; end_y = float('inf')
         for text in text_annotations[1:]:
             if start_marker in text.description.lower():
-                start_y = text.bounding_poly.vertices[3].y # Bottom-left Y
+                start_y = text.bounding_poly.vertices[3].y
             if end_marker in text.description.lower():
-                end_y = text.bounding_poly.vertices[0].y # Top-left Y
+                end_y = text.bounding_poly.vertices[0].y
         
         relevant_annotations = [
             ann for ann in text_annotations[1:] 
             if (ann.bounding_poly.vertices[0].y > start_y and 
                 ann.bounding_poly.vertices[3].y < end_y)
         ]
-        
     except (ValueError, IndexError):
         print("Could not find markers, parsing all annotations.")
         relevant_annotations = text_annotations[1:]
@@ -160,18 +156,14 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
         found = False
         for line_y, line_anns in lines.items():
             if abs(line_y - avg_y) < 15:
-                line_anns.append(ann)
-                found = True
-                break
-        if not found:
-            lines[avg_y] = [ann]
+                line_anns.append(ann); found = True; break
+        if not found: lines[avg_y] = [ann]
 
     # 3. For each line, separate into Name (left) and Duration (right) columns
     if not lines: return []
     
-    # Determine the vertical centerline of the text block
     all_x = [v.x for ann in relevant_annotations for v in ann.bounding_poly.vertices]
-    center_x = (min(all_x) + max(all_x)) / 2
+    center_x = (min(all_x) + max(all_x)) / 2 if all_x else 0
 
     for line_y in sorted(lines.keys()):
         line_anns = lines[line_y]
@@ -183,8 +175,8 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
         name = " ".join(name_parts).strip()
         duration_str = " ".join(duration_parts).strip()
 
-        # Pre-process common OCR mistakes in the duration string
-        duration_str = re.sub(r'\bS\b', '5', duration_str, flags=re.IGNORECASE)
+        # ✅ NEW, SMARTER FIX: Replaces 'S' with '5' only when it's followed by d, h, or m.
+        duration_str = re.sub(r'S([dhm])', r'5\1', duration_str, flags=re.IGNORECASE)
 
         if name and any(c in duration_str.lower() for c in "dhm"):
             print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
