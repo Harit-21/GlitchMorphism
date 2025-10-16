@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiBase = '';
     let countdownInterval;
 
-    // DOM Elements
     const elements = {
         timers: document.getElementById('timers'),
         form: document.getElementById('add-timer-form'),
@@ -33,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- API FUNCTIONS (No changes here) ---
+    // --- API FUNCTIONS (No changes) ---
     async function apiFetchTimers() {
         try { const res = await fetch(`${apiBase}/timers`); return res.ok ? await res.json() : []; }
         catch (err) { console.error("Fetch error:", err); return []; }
@@ -66,14 +65,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- MAIN REFRESH & RENDER ---
     async function refreshAllTimers() {
         timersState = await apiFetchTimers();
-        // Don't clear selection on every tick, only on full manual refresh actions
-        // selectedTimerIds = []; 
         updateBulkActionsUI();
         renderTimers();
         startCountdown();
     }
 
-    // ✅ FIXED: This function now generates the correct HTML for the UI
     function renderTimers() {
         if (!elements.timers) return;
         if (timersState.length === 0) {
@@ -90,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
                     <div class="timer-header">
                         <div class="timer-info">
-                            <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" />
+                            <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" style="pointer-events: none;"/>
                             <div class="timer-content">
                                 <div class="timer-name">${timer.name}</div>
                                 <div class="timer-time font-mono ${isDone ? 'finished' : ''}">${formatRemaining(timer.remaining_seconds)}</div>
@@ -138,6 +134,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // ✅ ADDED: A dedicated function to handle selection logic
+    function toggleSelection(timerId) {
+        const timer = timersState.find(t => t.id === timerId);
+        if (!timer || timer.remaining_seconds <= 0) {
+            return; // Can't select finished timers
+        }
+        
+        const index = selectedTimerIds.indexOf(timerId);
+        if (index > -1) {
+            selectedTimerIds.splice(index, 1); // Deselect
+        } else {
+            selectedTimerIds.push(timerId); // Select
+        }
+
+        updateBulkActionsUI();
+        renderTimers();
+    }
+
+
     // --- EVENT LISTENERS ---
     elements.form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -156,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.durationInput.value = '';
             elements.pickerContainer.classList.add('hidden');
             elements.clearNameBtn.classList.add('hidden');
-            selectedTimerIds = []; // Clear selection after adding
+            selectedTimerIds = [];
             await refreshAllTimers();
             elements.nameInput.focus();
         } finally {
@@ -166,15 +181,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ✅ FIXED: This listener is now simpler and handles clicks anywhere on the card
     elements.timers.addEventListener('click', async e => {
-        const target = e.target;
-        const card = target.closest('.timer-card');
+        const card = e.target.closest('.timer-card');
         if (!card) return;
 
-        const timerId = parseInt(card.dataset.id);
-        const timer = timersState.find(t => t.id === timerId);
-
-        if (target.classList.contains('delete-btn')) {
+        const timerId = parseInt(card.dataset.id, 10);
+        
+        // If delete button is clicked, handle deletion
+        if (e.target.closest('.delete-btn')) {
+            const timer = timersState.find(t => t.id === timerId);
             if (timer && timer.remaining_seconds > 0) {
                 if (confirm(`Are you sure you want to delete the active timer "${timer.name}"?`)) {
                     await apiDeleteTimer(timerId);
@@ -184,14 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 await apiClearTimer(timerId);
                 await refreshAllTimers();
             }
-        } else if (target.classList.contains('timer-checkbox')) {
-            if (target.checked) {
-                if (!selectedTimerIds.includes(timerId)) selectedTimerIds.push(timerId);
-            } else {
-                selectedTimerIds = selectedTimerIds.filter(id => id !== timerId);
-            }
-            updateBulkActionsUI();
-            renderTimers();
+        } else {
+            // For any other click on the card, toggle its selection
+            toggleSelection(timerId);
         }
     });
 
@@ -200,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (finished.length === 0) return;
         if (confirm(`Clear ${finished.length} finished timer(s)?`)) {
             await Promise.all(finished.map(t => apiClearTimer(t.id)));
-            selectedTimerIds = []; // Clear selection after clearing
+            selectedTimerIds = [];
             await refreshAllTimers();
         }
     });
@@ -211,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedTimerIds.length === 0) return;
         await apiReduceTime(selectedTimerIds, minutes);
         elements.reduceMinutesInput.value = '';
-        selectedTimerIds = []; // Clear selection after reducing
+        selectedTimerIds = [];
         await refreshAllTimers();
     });
     
