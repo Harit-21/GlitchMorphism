@@ -47,10 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
     async function apiClearTimer(id) {
         await fetch(`${apiBase}/timers/${id}/clear`, { method: 'POST' });
     }
-    async function apiReduceTime(timer_ids, minutes) {
-        const res = await fetch(`${apiBase}/timers/reduce-time`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timer_ids, minutes }) });
-        if (!res.ok) alert("Failed to reduce time for timers.");
-    }
     async function apiAdjustTime(timer_ids, minutes) {
         await fetch(`${apiBase}/timers/adjust-time`, {
             method: 'POST',
@@ -221,16 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedTimerIds = [];
             await refreshAllTimers();
         }
-    });
-
-    elements.reduceTimeBtn.addEventListener('click', async () => {
-        const minutes = parseInt(elements.reduceMinutesInput.value);
-        if (isNaN(minutes) || minutes <= 0) return alert('Enter valid minutes');
-        if (selectedTimerIds.length === 0) return;
-        await apiReduceTime(selectedTimerIds, minutes);
-        elements.reduceMinutesInput.value = '';
-        selectedTimerIds = [];
-        await refreshAllTimers();
     });
 
     elements.adjustTimeBtn.addEventListener('click', async () => {
