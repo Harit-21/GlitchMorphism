@@ -51,6 +51,13 @@ class Timer(Base):
     is_repeating = Column(Boolean, default=False, nullable=False)
     duration_seconds = Column(Integer, nullable=False)
 
+class Template(Base):
+    __tablename__ = "templates"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    duration = Column(String, nullable=False)
+    category = Column(String, default="General", nullable=False)
+
 def get_db():
     db = SessionLocal()
     try: yield db
@@ -79,6 +86,17 @@ class TimerOut(BaseModel):
 class TimerAdjustIn(BaseModel): 
     timer_ids: List[int]
     minutes: int
+
+class TemplateIn(BaseModel):
+    name: str
+    duration: str
+    category: str = "General"
+
+class TemplateOut(BaseModel):
+    id: int
+    name: str
+    duration: str
+    category: str
 
 # ========== App Setup ==========
 app = FastAPI(title="Notifimers")
@@ -338,7 +356,35 @@ async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = Fi
         return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
     else: return {"message": "No text found in the image."}
 
-# ========== Background Checker ==========
+
+# Add these endpoints after your other /timers endpoints
+@app.get("/templates", response_model=list[TemplateOut])
+def get_templates(db: Session = Depends(get_db)):
+    templates_db = db.query(Template).order_by(Template.name).all()
+    return templates_db
+
+@app.post("/templates", response_model=TemplateOut, status_code=201)
+def create_template(template_in: TemplateIn, db: Session = Depends(get_db)):
+    # Check for duplicates to prevent clutter
+    existing = db.query(Template).filter(Template.name == template_in.name, Template.duration == template_in.duration).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Template with this name and duration already exists")
+    
+    new_template = Template(**template_in.model_dump())
+    db.add(new_template)
+    db.commit()
+    db.refresh(new_template)
+    return new_template
+
+@app.delete("/templates/{template_id}", status_code=204)
+def delete_template(template_id: int, db: Session = Depends(get_db)):
+    template_to_delete = db.query(Template).filter(Template.id == template_id).first()
+    if not template_to_delete:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.delete(template_to_delete)
+    db.commit()
+    return Response(status_code=204)
+
 # ========== Background Checker ==========
 def background_checker():
     while True:
