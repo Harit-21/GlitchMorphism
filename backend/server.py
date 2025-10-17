@@ -69,8 +69,8 @@ class TimerAdjustIn(BaseModel):
 
 # ========== App Setup ==========
 app = FastAPI(title="Notifimers")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
+app.add_middleware(CORSMiddleware, allow_origins=["https://thingdoms.web.app"], allow_methods=["*"], allow_headers=["*"])
+# app.mount("/static", StaticFiles(directory=STATIC_PATH, html=True), name="static")
 
 # ========== Google Cloud Vision Setup ==========
 GOOGLE_CREDENTIALS_BASE64 = os.environ.get("GOOGLE_CREDENTIALS_BASE64")
@@ -215,8 +215,8 @@ def on_startup():
     init_db()
     threading.Thread(target=background_checker, daemon=True).start()
 
-@app.get("/", include_in_schema=False)
-def root(): return FileResponse(os.path.join(STATIC_PATH, "index.html"))
+# @app.get("/", include_in_schema=False)
+# def root(): return FileResponse(os.path.join(STATIC_PATH, "index.html"))
 
 @app.get("/ping")
 def ping(): return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
