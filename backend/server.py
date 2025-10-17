@@ -140,14 +140,23 @@ def reconstruct_text_by_lines(annotations):
 
 
 def parse_duration(s: str) -> timedelta:
-    s = s.strip().lower().replace('-', ' ').replace(',', ' ')
-    if s.isdigit(): return timedelta(minutes=int(s))
+    s = s.strip().lower()
+    s = s.replace('-', ' ').replace(',', ' ').replace('.', ' ') # Handles '1d.7H'
+    s = s.replace('н', 'h')
+    if s.isdigit(): 
+        return timedelta(minutes=int(s))
+    
     days, hours, minutes = 0, 0, 0
-    d_match = re.search(r"(\d+)\s*d", s); h_match = re.search(r"(\d+)\s*h", s); m_match = re.search(r"(\d+)\s*m", s)
+    d_match = re.search(r"(\d+)\s*d", s)
+    h_match = re.search(r"(\d+)\s*h", s)
+    m_match = re.search(r"(\d+)\s*m", s)
+    
     if d_match: days = int(d_match.group(1))
     if h_match: hours = int(h_match.group(1))
-    if m_match: minutes = int(m_match.group(1))
-    if not d_match and not h_match and not m_match: raise ValueError("Invalid duration format")
+    if m_match: minutes = int(m_match.group(1))    
+    if not d_match and not h_match and not m_match:
+        raise ValueError("Invalid duration format")
+        
     return timedelta(days=days, hours=hours, minutes=minutes)
 
 def parse_ocr_text_and_create_timers(text_annotations, db: Session):
