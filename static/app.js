@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let timersState = [];
     let selectedTimerIds = [];
     let selectedTime = { days: 0, hours: 0, minutes: 0 };
-    const apiBase = '';
+    const apiBase = 'https://glitchmorphism.onrender.com';
     let countdownInterval;
 
     const elements = {
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
 
             return `
-                <div class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
+                <div id="timer-${timer.id}" class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
                     <div class="timer-header">
                         <div class="timer-info">
                             <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" style="pointer-events: none;"/>
