@@ -153,7 +153,6 @@ def parse_duration(s: str) -> timedelta:
 def parse_ocr_text_and_create_timers(text_annotations, db: Session):
     timers_found = []
     
-    # 1. Isolate the relevant annotations between our start and end markers
     try:
         full_text_lower = text_annotations[0].description.lower()
         start_marker = "upgrades in progress"
@@ -163,7 +162,7 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
         end_pos = full_text_lower.find(end_marker, start_pos)
 
         if start_pos == -1 or end_pos == -1:
-             raise ValueError("Markers not found")
+                raise ValueError("Markers not found")
 
         start_y = 0; end_y = float('inf')
         for text in text_annotations[1:]:
@@ -181,7 +180,6 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
         print("Could not find markers, parsing all annotations.")
         relevant_annotations = text_annotations[1:]
 
-    # 2. Group annotations into lines
     lines = {}
     for ann in relevant_annotations:
         avg_y = sum(v.y for v in ann.bounding_poly.vertices) / 4
@@ -191,7 +189,6 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
                 line_anns.append(ann); found = True; break
         if not found: lines[avg_y] = [ann]
 
-    # 3. For each line, separate into Name (left) and Duration (right) columns
     if not lines: return []
     
     all_x = [v.x for ann in relevant_annotations for v in ann.bounding_poly.vertices]
@@ -206,8 +203,6 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
 
         name = " ".join(name_parts).strip()
         duration_str = " ".join(duration_parts).strip()
-
-        # ✅ NEW, SMARTER FIX: Replaces 'S' with '5' only when it's followed by d, h, or m.
         duration_str = re.sub(r'S([dhm])', r'5\1', duration_str, flags=re.IGNORECASE)
 
         if name and any(c in duration_str.lower() for c in "dhm"):
@@ -216,7 +211,17 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
                 delta = parse_duration(duration_str)
                 start_time_dt = datetime.utcnow()
                 end_time_dt = start_time_dt + delta
-                new_timer = Timer(name=name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
+                
+                # --- THIS IS THE FIX ---
+                duration_in_seconds = int(delta.total_seconds())
+                new_timer = Timer(
+                    name=name, 
+                    start_time=int(start_time_dt.timestamp()), 
+                    end_time=int(end_time_dt.timestamp()),
+                    duration_seconds=duration_in_seconds
+                )
+                # -----------------------
+
                 db.add(new_timer)
                 timers_found.append(name)
             except ValueError:
