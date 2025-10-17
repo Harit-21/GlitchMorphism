@@ -8,6 +8,7 @@ import re
 import json
 import io
 import base64
+from fastapi.concurrency import run_in_threadpool
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
@@ -343,18 +344,32 @@ def adjust_timers_time(data: TimerAdjustIn, db: Session = Depends(get_db)):
 
 @app.post("/upload-screenshot")
 async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = File(...)):
-    if not vision_client: raise HTTPException(status_code=500, detail="OCR service is not configured.")
+    if not vision_client:
+        raise HTTPException(status_code=500, detail="OCR service is not configured.")
+
     print(f"Received file for OCR: {file.filename}")
-    contents = await file.read(); image = vision.Image(content=contents)
-    response = vision_client.text_detection(image=image)
+    contents = await file.read()
+    image = vision.Image(content=contents)
+
+    # --- THIS IS THE FIX ---
+    # Run the slow, blocking Google API call in a separate thread
+    try:
+        response = await run_in_threadpool(vision_client.text_detection, image=image)
+    except Exception as e:
+        print(f"Google Vision API call failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Error communicating with Vision API: {e}")
+    # -----------------------
+
     texts = response.text_annotations
-    if response.error.message: raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
+    if response.error.message:
+        raise HTTPException(status_code=500, detail=f"Google Vision API Error: {response.error.message}")
+
     if texts:
-        full_text = reconstruct_text_by_lines(texts)
-        print("---- OCR Full Text ----\n" + full_text + "\n-----------------------")
+        # This part is fast, so it's fine to run directly
         timers_created = parse_ocr_text_and_create_timers(texts, db)
         return {"message": f"Successfully created {len(timers_created)} timers.", "timers": timers_created}
-    else: return {"message": "No text found in the image."}
+    else:
+        return {"message": "No text found in the image."}
 
 
 # Add these endpoints after your other /timers endpoints
