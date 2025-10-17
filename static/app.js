@@ -34,8 +34,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- API FUNCTIONS (No changes) ---
     async function apiFetchTimers() {
-        try { const res = await fetch(`${apiBase}/timers`); return res.ok ? await res.json() : []; }
-        catch (err) { console.error("Fetch error:", err); return []; }
+        try {
+            const res = await fetch(`${apiBase}/timers`);
+            if (!res.ok) return [];
+            const timers = await res.json();
+            // Add a client-side 'endTime' property for accurate countdowns
+            return timers.map(timer => ({
+                ...timer,
+                endTime: Date.now() + timer.remaining_seconds * 1000
+            }));
+        } catch (err) {
+            console.error("Fetch error:", err);
+            return [];
+        }
     }
     async function apiAddTimer(name, duration) {
         const res = await fetch(`${apiBase}/timers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, duration }) });
@@ -67,7 +78,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MAIN REFRESH & RENDER ---
     async function refreshAllTimers() {
+        if (countdownInterval) clearInterval(countdownInterval);
         timersState = await apiFetchTimers();
+        selectedTimerIds = [];
         updateBulkActionsUI();
         renderTimers();
         startCountdown();
@@ -105,29 +118,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    // --- COUNTDOWN LOGIC ---
     function startCountdown() {
         if (countdownInterval) clearInterval(countdownInterval);
+
         countdownInterval = setInterval(() => {
-            let hasChanges = false;
+            const now = Date.now();
             timersState.forEach(timer => {
                 if (timer.remaining_seconds > 0) {
-                    timer.remaining_seconds--;
-                    hasChanges = true;
-                    if (timer.remaining_seconds <= 0) {
-                        refreshAllTimers();
+                    const newRemaining = Math.round((timer.endTime - now) / 1000);
+                    // Only update if the second has actually changed
+                    if (newRemaining !== timer.remaining_seconds) {
+                        timer.remaining_seconds = Math.max(0, newRemaining);
+                        updateTimerDisplay(timer);
                     }
                 }
             });
-            if (hasChanges) {
-                renderTimers();
-            }
         }, 1000);
     }
 
     // --- UI & HELPER FUNCTIONS ---
     function formatRemaining(sec) { if (sec <= 0) return '✅ Finished!'; const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60; return `${d}d ${h}h ${m}m ${s}s`; }
+
     function parseSmartDuration(str) { const clean = str.trim().toLowerCase(); if (/^\d+$/.test(clean)) return `0d0h${clean}m`; let d = 0, h = 0, m = 0; const r = /(\d+)\s*(d|h|m)/g; let match; while ((match = r.exec(clean))) { if (match[2] === 'd') d = parseInt(match[1]); else if (match[2] === 'h') h = parseInt(match[1]); else if (match[2] === 'm') m = parseInt(match[1]); } return `${d}d${h}h${m}m`; }
+
     function updateBulkActionsUI() {
         if (selectedTimerIds.length > 0) {
             elements.selectionCount.textContent = `${selectedTimerIds.length} selected`;
@@ -137,22 +150,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ✅ ADDED: A dedicated function to handle selection logic
+    function updateTimerDisplay(timer) {
+        const card = document.getElementById(`timer-${timer.id}`);
+        if (!card) return; // Exit if card not found
+
+        const timeElement = card.querySelector('.timer-time');
+        const progressFill = card.querySelector('.progress-fill');
+
+        timeElement.textContent = formatRemaining(timer.remaining_seconds);
+
+        const percent = Math.max(0, Math.min(100, (timer.remaining_seconds / timer.total_seconds) * 100));
+        progressFill.style.width = `${percent}%`;
+
+        // If timer just finished, re-render the card to update its state (e.g., disable checkbox)
+        if (timer.remaining_seconds <= 0 && !card.classList.contains('finished')) {
+            refreshAllTimers(); // Do a full refresh when a timer finishes
+        }
+    }
+
     function toggleSelection(timerId) {
         const timer = timersState.find(t => t.id === timerId);
-        if (!timer || timer.remaining_seconds <= 0) {
-            return; // Can't select finished timers
-        }
+        if (!timer || timer.remaining_seconds <= 0) return;
 
+        const card = document.getElementById(`timer-${timerId}`);
         const index = selectedTimerIds.indexOf(timerId);
-        if (index > -1) {
-            selectedTimerIds.splice(index, 1); // Deselect
-        } else {
-            selectedTimerIds.push(timerId); // Select
-        }
 
+        if (index > -1) {
+            selectedTimerIds.splice(index, 1);
+            if (card) card.classList.remove('selected');
+        } else {
+            selectedTimerIds.push(timerId);
+            if (card) card.classList.add('selected');
+        }
         updateBulkActionsUI();
-        renderTimers();
     }
 
 
