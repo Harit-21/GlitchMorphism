@@ -339,33 +339,44 @@ async def upload_screenshot(db: Session = Depends(get_db), file: UploadFile = Fi
     else: return {"message": "No text found in the image."}
 
 # ========== Background Checker ==========
+# ========== Background Checker ==========
 def background_checker():
     while True:
         db = SessionLocal()
         try:
             now_ts = int(datetime.utcnow().timestamp())
             timers_to_notify = db.query(Timer).filter(Timer.notified == False, Timer.end_time <= now_ts).all()
+            
             for timer in timers_to_notify:
                 telegram_msg = f"⏰ '{timer.name}' DONE!".upper()
                 sent_telegram = send_telegram_message(telegram_msg)
                 sent_alarm = send_ntfy_alarm(timer.name)
+                
                 if sent_telegram or sent_alarm:
-                    timer.notified = True 
+                    # This block runs if a notification was sent.
+                    timer.notified = True
+
                     if timer.is_repeating:
-                    new_start_dt = datetime.utcnow()
-                    new_end_dt = new_start_dt + timedelta(seconds=timer.duration_seconds)
-                    restarted_timer = Timer(
-                        name=timer.name,
-                        category=timer.category,
-                        start_time=int(new_start_dt.timestamp()),
-                        end_time=int(new_end_dt.timestamp()),
-                        is_repeating=True,
-                        duration_seconds=timer.duration_seconds
-                    )
-                    db.add(restarted_timer)
+                        # This block ONLY runs for repeating timers.
+                        new_start_dt = datetime.utcnow()
+                        new_end_dt = new_start_dt + timedelta(seconds=timer.duration_seconds)
+                        restarted_timer = Timer(
+                            name=timer.name,
+                            category=timer.category,
+                            start_time=int(new_start_dt.timestamp()),
+                            end_time=int(new_end_dt.timestamp()),
+                            is_repeating=True,
+                            duration_seconds=timer.duration_seconds
+                        )
+                        db.add(restarted_timer)
+                    
+                    # Commit the changes (the 'notified' flag and any new timer)
                     db.commit()
+
         except Exception as e:
-            print(f"Error in background_checker: {e}"); db.rollback()
-        finally: db.close()
+            print(f"Error in background_checker: {e}")
+            db.rollback()
+        finally:
+            db.close()
+            
         time.sleep(CHECK_INTERVAL_SECONDS)
-        
