@@ -43,10 +43,13 @@ class Timer(Base):
     __tablename__ = "timers"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    category = Column(String, default="General", nullable=False)
     start_time = Column(BigInteger, nullable=False)
     end_time = Column(BigInteger, nullable=False)
     notified = Column(Boolean, default=False, nullable=False)
     cleared_by_user = Column(Boolean, default=False, nullable=False)
+    is_repeating = Column(Boolean, default=False, nullable=False)
+    duration_seconds = Column(Integer, nullable=False)
 
 def get_db():
     db = SessionLocal()
@@ -59,9 +62,19 @@ def init_db(): Base.metadata.create_all(bind=engine)
 class TimerIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     duration: str = Field(..., min_length=1)
+    category: str = "General"
+    is_repeating: bool = False
 
 class TimerOut(BaseModel):
-    id: int; name: str; notified: bool; remaining_seconds: int; total_seconds: int
+    id: int
+    name: str
+    category: str  # ✅ ADDED
+    notified: bool
+    remaining_seconds: int
+    total_seconds: int
+    is_repeating: bool # ✅ ADDED
+    duration_seconds: int # ✅ ADDED
+    end_time: int
 
 class TimerAdjustIn(BaseModel): 
     timer_ids: List[int]
@@ -228,19 +241,56 @@ def get_timers(db: Session = Depends(get_db)):
     response_items = []
     for t in timers_db:
         remaining = t.end_time - now_ts
-        total = t.end_time - t.start_time
-        response_items.append(TimerOut(id=t.id, name=t.name, notified=t.notified, remaining_seconds=max(0, remaining), total_seconds=total))
+        # ✅ UPDATED: Include new fields in the API response
+        response_items.append(TimerOut(
+            id=t.id, 
+            name=t.name, 
+            category=t.category,
+            notified=t.notified, 
+            remaining_seconds=max(0, remaining), 
+            total_seconds=t.duration_seconds,
+            is_repeating=t.is_repeating,
+            duration_seconds=t.duration_seconds,
+            end_time=t.end_time
+        ))
     return response_items
 
 @app.post("/timers", response_model=TimerOut)
 def add_timer(timer_in: TimerIn, db: Session = Depends(get_db)):
-    try: delta = parse_duration(timer_in.duration)
-    except ValueError as e: raise HTTPException(status_code=400, detail=str(e))
+    try: 
+        delta = parse_duration(timer_in.duration)
+    except ValueError as e: 
+        raise HTTPException(status_code=400, detail=str(e))
+    
     start_time_dt = datetime.utcnow()
     end_time_dt = start_time_dt + delta
-    new_timer = Timer(name=timer_in.name, start_time=int(start_time_dt.timestamp()), end_time=int(end_time_dt.timestamp()))
-    db.add(new_timer); db.commit(); db.refresh(new_timer)
-    return TimerOut(id=new_timer.id, name=new_timer.name, notified=new_timer.notified, remaining_seconds=max(0, new_timer.end_time - new_timer.start_time), total_seconds=(new_timer.end_time - new_timer.start_time))
+    duration_seconds = int(delta.total_seconds())
+
+    # ✅ UPDATED: Create timer with all new fields
+    new_timer = Timer(
+        name=timer_in.name,
+        category=timer_in.category if timer_in.category else "General",
+        start_time=int(start_time_dt.timestamp()),
+        end_time=int(end_time_dt.timestamp()),
+        is_repeating=timer_in.is_repeating,
+        duration_seconds=duration_seconds
+    )
+    db.add(new_timer)
+    db.commit()
+    db.refresh(new_timer)
+
+    # ✅ UPDATED: Return all necessary fields in the response
+    return TimerOut(
+        id=new_timer.id, 
+        name=new_timer.name, 
+        category=new_timer.category,
+        notified=new_timer.notified, 
+        remaining_seconds=max(0, new_timer.end_time - new_timer.start_time), 
+        total_seconds=new_timer.duration_seconds,
+        is_repeating=new_timer.is_repeating,
+        duration_seconds=new_timer.duration_seconds,
+        end_time=new_timer.end_time
+    )
 
 @app.delete("/timers/{timer_id}", status_code=204)
 def delete_timer(timer_id: int, db: Session = Depends(get_db)):
@@ -300,7 +350,20 @@ def background_checker():
                 sent_telegram = send_telegram_message(telegram_msg)
                 sent_alarm = send_ntfy_alarm(timer.name)
                 if sent_telegram or sent_alarm:
-                    timer.notified = True; db.commit()
+                    timer.notified = True 
+                    if timer.is_repeating:
+                    new_start_dt = datetime.utcnow()
+                    new_end_dt = new_start_dt + timedelta(seconds=timer.duration_seconds)
+                    restarted_timer = Timer(
+                        name=timer.name,
+                        category=timer.category,
+                        start_time=int(new_start_dt.timestamp()),
+                        end_time=int(new_end_dt.timestamp()),
+                        is_repeating=True,
+                        duration_seconds=timer.duration_seconds
+                    )
+                    db.add(restarted_timer)
+                    db.commit()
         except Exception as e:
             print(f"Error in background_checker: {e}"); db.rollback()
         finally: db.close()
