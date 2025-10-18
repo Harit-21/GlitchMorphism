@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedTime = { days: 0, hours: 0, minutes: 0 };
     const apiBase = 'https://glitchmorphism.onrender.com';
     let countdownInterval;
+    let currentCategory = 'All';
+    let showEndTime = false;
+    let savedTemplates = [];
 
     const elements = {
         timers: document.getElementById('timers'),
@@ -16,6 +19,12 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn: document.getElementById('submit-btn'),
         submitIcon: document.getElementById('submit-icon'),
         submitSpinner: document.getElementById('submit-spinner'),
+        tabsContainer: document.getElementById('tabs-container'),
+        templatesContainer: document.getElementById('templates-container'),
+        endTimeToggle: document.getElementById('end-time-toggle'),
+        categoryInput: document.getElementById('category-input'),
+        repeatToggle: document.getElementById('repeat-toggle'),
+        saveTemplateToggle: document.getElementById('save-template-toggle'),
         clearFinishedBtn: document.getElementById('clear-finished-btn'),
         bulkActions: document.getElementById('bulk-actions'),
         adjustMinutesInput: document.getElementById('adjust-minutes-input'),
@@ -25,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         deselectAllBtn: document.getElementById('deselect-all-btn'),
         uploadInput: document.getElementById('screenshot-upload'),
         uploadStatus: document.getElementById('upload-status'),
+        inputSection: document.querySelector('.input-section'),
         pickers: {
             days: document.getElementById('days-picker'),
             hours: document.getElementById('hours-picker'),
@@ -48,9 +58,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return [];
         }
     }
-    async function apiAddTimer(name, duration) {
-        const res = await fetch(`${apiBase}/timers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, duration }) });
-        if (!res.ok) alert("Failed to add timer");
+    async function apiAddTimer(name, duration, category, is_repeating) {
+        const res = await fetch(`${apiBase}/timers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, duration, category, is_repeating })
+        });
+        if (!res.ok) {
+            alert("Failed to add timer");
+            return null;
+        }
+        return await res.json();
     }
     async function apiDeleteTimer(id) {
         await fetch(`${apiBase}/timers/${id}`, { method: 'DELETE' });
@@ -76,64 +94,145 @@ document.addEventListener('DOMContentLoaded', () => {
         return await res.json();
     }
 
+    async function apiFetchTemplates() {
+        try {
+            const res = await fetch(`${apiBase}/templates`);
+            if (!res.ok) return [];
+            return await res.json();
+        } catch (err) {
+            console.error("Failed to fetch templates:", err);
+            return [];
+        }
+    }
+
+    async function apiAddTemplate(name, duration, category) {
+        await fetch(`${apiBase}/templates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, duration, category })
+        });
+    }
+
+    async function apiDeleteTemplate(id) {
+        await fetch(`${apiBase}/templates/${id}`, { method: 'DELETE' });
+    }
+
     // --- MAIN REFRESH & RENDER ---
+
     async function refreshAllTimers() {
         if (countdownInterval) clearInterval(countdownInterval);
         timersState = await apiFetchTimers();
         selectedTimerIds = [];
-        updateBulkActionsUI();
+        renderTabs();
         renderTimers();
+        updateBulkActionsUI();
         startCountdown();
+    }
+
+    function renderTabs() {
+        const categories = ['All', ...new Set(timersState.map(t => t.category))];
+        elements.tabsContainer.innerHTML = categories.map(cat =>
+            `<button class="tab-btn ${cat === currentCategory ? 'active' : ''}" data-category="${cat}">${cat}</button>`
+        ).join('');
+    }
+
+    function updateBodyPadding() {
+        if (!elements.inputSection) return;
+        const inputHeight = elements.inputSection.offsetHeight;
+        document.body.style.paddingBottom = `${inputHeight + 20}px`; // Add 20px extra space
+    }
+
+    // ✅ NEW: Renders the saved templates
+    function renderTemplates() {
+        if (savedTemplates.length === 0) {
+            elements.templatesContainer.innerHTML = `<div style="color: var(--slate-500); font-size: 0.875rem;">Save timers as templates for quick access.</div>`;
+            return;
+        }
+        elements.templatesContainer.innerHTML = savedTemplates.map((template, index) => `
+            <div class="template-card" data-id="${template.id}" data-name="${template.name}" data-duration="${template.duration}" data-category="${template.category || ''}">
+                <div>
+                    <div style="font-weight: bold;">${template.name} <span style="font-size: 0.8rem; color: var(--slate-400);">(${template.category || 'General'})</span></div>
+                    <div style="font-size: 0.8rem; color: var(--slate-400);">${template.duration}</div>
+                </div>
+                <button class="delete-template-btn">✖</button>
+            </div>
+        `).join('');
     }
 
     function renderTimers() {
         if (!elements.timers) return;
-        if (timersState.length === 0) {
-            elements.timers.innerHTML = '<div class="empty-state">No active timers. Add one below!</div>';
+
+        const timersToDisplay = currentCategory === 'All'
+            ? timersState
+            : timersState.filter(timer => timer.category === currentCategory);
+
+        if (timersToDisplay.length === 0) {
+            elements.timers.innerHTML = currentCategory === 'All'
+                ? '<div class="empty-state">No active timers. Add one below!</div>'
+                : `<div class="empty-state">No timers found in the '${currentCategory}' category.</div>`;
             return;
         }
-        elements.timers.innerHTML = timersState.map(timer => {
+
+        elements.timers.innerHTML = timersToDisplay.map(timer => {
             const isDone = timer.remaining_seconds <= 0;
             const isSelected = selectedTimerIds.includes(timer.id);
             const total = timer.total_seconds || 1;
             const percent = isDone ? 0 : Math.max(0, Math.min(100, (timer.remaining_seconds / total) * 100));
 
             return `
-                <div id="timer-${timer.id}" class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
-                    <div class="timer-header">
-                        <div class="timer-info">
-                            <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" style="pointer-events: none;"/>
-                            <div class="timer-content">
-                                <div class="timer-name">${timer.name}</div>
-                                <div class="timer-time font-mono ${isDone ? 'finished' : ''}">${formatRemaining(timer.remaining_seconds)}</div>
-                            </div>
+            <div id="timer-${timer.id}" class="timer-card glass-card ${isDone ? 'finished' : ''} ${isSelected ? 'selected' : ''}" data-id="${timer.id}">
+                <div class="timer-header">
+                    <div class="timer-info">
+                        <input type="checkbox" class="timer-checkbox" ${isSelected ? 'checked' : ''} ${isDone ? 'disabled' : ''} data-id="${timer.id}" style="pointer-events: none;"/>
+                        <div class="timer-content">
+                            <div class="timer-name">${timer.name}</div>
+                            <div class="timer-time font-mono ${isDone ? 'finished' : ''}">${formatRemaining(timer.remaining_seconds)}</div>
                         </div>
-                        <button class="delete-btn" data-id="${timer.id}">✖</button>
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${percent}%"></div>
-                    </div>
+                    <button class="delete-btn" data-id="${timer.id}">✖</button>
                 </div>
-            `;
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percent}%"></div>
+                </div>
+            </div>
+        `;
         }).join('');
     }
 
     function startCountdown() {
         if (countdownInterval) clearInterval(countdownInterval);
-
         countdownInterval = setInterval(() => {
             const now = Date.now();
+            let hasFinished = false;
             timersState.forEach(timer => {
                 if (timer.remaining_seconds > 0) {
                     const newRemaining = Math.round((timer.endTime - now) / 1000);
-                    // Only update if the second has actually changed
                     if (newRemaining !== timer.remaining_seconds) {
                         timer.remaining_seconds = Math.max(0, newRemaining);
                         updateTimerDisplay(timer);
                     }
                 }
             });
+            if (hasFinished) setTimeout(refreshAllTimers, 1500); // Refresh to fetch the newly created repeating timer
         }, 1000);
+    }
+
+    // ✅ NEW: formatDisplayTime handles the toggle logic
+    function formatDisplayTime(timer) {
+        if (showEndTime && timer.remaining_seconds > 0) {
+            const endDate = new Date(timer.endTime);
+            const today = new Date();
+            const tomorrow = new Date();
+            tomorrow.setDate(today.getDate() + 1);
+            const timeString = endDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            if (endDate.toDateString() === today.toDateString()) return `Today at ${timeString}`;
+            if (endDate.toDateString() === tomorrow.toDateString()) return `Tomorrow at ${timeString}`;
+            return endDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ` at ${timeString}`;
+        }
+        const sec = timer.remaining_seconds;
+        if (sec <= 0) return '✅ Finished!';
+        const d = Math.floor(sec / 86400); const h = Math.floor((sec % 86400) / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
+        return `${d}d ${h}h ${m}m ${s}s`;
     }
 
     // --- UI & HELPER FUNCTIONS ---
@@ -152,69 +251,183 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTimerDisplay(timer) {
         const card = document.getElementById(`timer-${timer.id}`);
-        if (!card) return; // Exit if card not found
-
+        if (!card) return;
         const timeElement = card.querySelector('.timer-time');
         const progressFill = card.querySelector('.progress-fill');
 
-        timeElement.textContent = formatRemaining(timer.remaining_seconds);
+        // Use your existing formatDisplayTime function
+        timeElement.textContent = formatDisplayTime(timer);
 
-        const percent = Math.max(0, Math.min(100, (timer.remaining_seconds / timer.total_seconds) * 100));
+        const total = timer.total_seconds || 1;
+        const percent = Math.max(0, (timer.remaining_seconds / total) * 100);
         progressFill.style.width = `${percent}%`;
 
-        // If timer just finished, re-render the card to update its state (e.g., disable checkbox)
         if (timer.remaining_seconds <= 0 && !card.classList.contains('finished')) {
-            refreshAllTimers(); // Do a full refresh when a timer finishes
+            // Timer has just finished
+            card.classList.add('finished');
+            timeElement.classList.add('finished');
+            card.querySelector('.timer-checkbox').disabled = true;
+
+            if (timer.is_repeating) {
+                // If it was a repeating timer, we need to refresh to get the new one from the backend
+                setTimeout(refreshAllTimers, 1500);
+            }
         }
+        updateFavicon();
+    }
+
+    function updateFavicon() {
+        const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+        const activeTimers = timersState.filter(t => t.remaining_seconds > 0);
+
+        if (!activeTimers.length) {
+            link.href = 'data:image/x-icon;,'; // Reset to blank favicon
+            return;
+        }
+
+        const shortestTimer = activeTimers.sort((a, b) => a.remaining_seconds - b.remaining_seconds)[0];
+        const sec = shortestTimer.remaining_seconds;
+
+        let displayText = "!";
+        let fontSize = 'bold 38px "JetBrains Mono"';
+
+        if (sec <= 0) {
+            displayText = '✅';
+        } else if (sec < 3600) {
+            displayText = Math.round(sec / 60).toString();
+        } else if (sec < 86400) {
+            displayText = `${Math.round(sec / 3600)}h`;
+            fontSize = 'bold 37px "JetBrains Mono"';
+        } else {
+            displayText = `${Math.round(sec / 86400)}d`;
+            fontSize = 'bold 37px "JetBrains Mono"';
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#7c3aed';
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = 'white';
+        ctx.font = fontSize;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(displayText, 32, 34);
+
+        link.type = 'image/x-icon';
+        link.rel = 'shortcut icon';
+        link.href = canvas.toDataURL("image/x-icon");
+        if (!link.parentNode) document.head.appendChild(link);
     }
 
     function toggleSelection(timerId) {
         const timer = timersState.find(t => t.id === timerId);
         if (!timer || timer.remaining_seconds <= 0) return;
-
         const card = document.getElementById(`timer-${timerId}`);
+        const checkbox = card.querySelector('.timer-checkbox');
         const index = selectedTimerIds.indexOf(timerId);
-
         if (index > -1) {
             selectedTimerIds.splice(index, 1);
             if (card) card.classList.remove('selected');
+            if (checkbox) checkbox.checked = false;
         } else {
             selectedTimerIds.push(timerId);
             if (card) card.classList.add('selected');
+            if (checkbox) checkbox.checked = true;
         }
         updateBulkActionsUI();
     }
 
-
     // --- EVENT LISTENERS ---
     elements.form.addEventListener('submit', async (e) => {
         e.preventDefault();
+
         const name = elements.nameInput.value.trim();
-        const raw = elements.durationInput.value.trim();
-        if (!name || !raw) return alert("Name and duration required");
+        const rawDuration = elements.durationInput.value.trim();
+        const category = elements.categoryInput ? elements.categoryInput.value.trim() : ''; // Safely get category
+        const isRepeating = elements.repeatToggle.checked;
+        const shouldSaveTemplate = elements.saveTemplateToggle.checked;
+
+        if (!name || !rawDuration) {
+            return alert("Name and duration are required.");
+        }
 
         elements.submitBtn.disabled = true;
         elements.submitIcon.style.display = 'none';
         elements.submitSpinner.style.display = 'block';
 
         try {
-            const parsed = parseSmartDuration(raw);
-            await apiAddTimer(name, parsed);
-            elements.nameInput.value = '';
-            elements.durationInput.value = '';
+            if (shouldSaveTemplate) {
+                await apiAddTemplate(name, rawDuration, category);
+                savedTemplates = await apiFetchTemplates();
+                renderTemplates();
+            }
+
+            // --- Perform Action and Get New Timer Data ---
+            const newTimer = await apiAddTimer(name, rawDuration, category, isRepeating);
+
+            if (newTimer) {
+                // --- Update UI Instantly with Server Data ---
+                // Add the new timer to the start of our state array
+                timersState.unshift({
+                    ...newTimer,
+                    endTime: Date.now() + newTimer.remaining_seconds * 1000
+                });
+                // Re-render the UI with the new timer
+                renderTabs();
+                renderTimers();
+            } else {
+                // If something went wrong, fall back to a full refresh
+                await refreshAllTimers();
+            }
+
+            elements.form.reset();
             elements.pickerContainer.classList.add('hidden');
             elements.clearNameBtn.classList.add('hidden');
-            selectedTimerIds = [];
-            await refreshAllTimers();
             elements.nameInput.focus();
+
+        } catch (error) {
+            console.error("Failed to add timer:", error);
+            alert("Could not add the timer. Please try again.");
         } finally {
+            // --- Hide Loading State ---
             elements.submitBtn.disabled = false;
             elements.submitIcon.style.display = 'block';
             elements.submitSpinner.style.display = 'none';
         }
     });
 
-    // ✅ FIXED: This listener is now simpler and handles clicks anywhere on the card
+    elements.tabsContainer.addEventListener('click', e => {
+        if (e.target.classList.contains('tab-btn')) {
+            currentCategory = e.target.dataset.category;
+            renderTabs();
+            renderTimers();
+        }
+    });
+
+    elements.endTimeToggle.addEventListener('change', e => {
+        showEndTime = e.target.checked;
+        renderTimers();
+    });
+
+    elements.templatesContainer.addEventListener('click', async e => {
+        const templateCard = e.target.closest('.template-card');
+        if (!templateCard) return;
+        if (e.target.classList.contains('delete-template-btn')) {
+            const templateId = parseInt(templateCard.dataset.id, 10);
+            if (confirm("Delete this template?")) {
+                await apiDeleteTemplate(templateId);
+                savedTemplates = await apiFetchTemplates();
+                renderTemplates();
+            }
+        } else {
+            elements.nameInput.value = templateCard.dataset.name;
+            elements.durationInput.value = templateCard.dataset.duration;
+            elements.categoryInput.value = templateCard.dataset.category || '';
+        }
+    });
+
     elements.timers.addEventListener('click', async e => {
         const card = e.target.closest('.timer-card');
         if (!card) return;
@@ -312,6 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.togglePickerBtn.addEventListener('click', () => {
         elements.pickerContainer.classList.toggle('hidden');
+        setTimeout(updateBodyPadding, 50);
     });
 
     elements.nameInput.addEventListener('input', () => {
@@ -363,8 +577,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- INITIALIZATION ---
-    populatePickers();
-    setupPickerListeners();
-    refreshAllTimers();
+    async function initializeApp() {
+        savedTemplates = await apiFetchTemplates(); // Fetch from DB on load
+        renderTemplates();
+        populatePickers();
+        setupPickerListeners();
+        await refreshAllTimers();
+        updateBodyPadding();
+    }
+    initializeApp();
 });
