@@ -18,6 +18,7 @@
         }
 
         :root {
+            --background: 240 10% 3.9%;
             --bg-primary: #0a0118;
             --bg-secondary: #1a0b2e;
             --glass-bg: rgba(28, 15, 45, 0.6);
@@ -41,7 +42,7 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 50%, #16042e 100%);
+            background-color: hsl(var(--background));
             background-attachment: fixed;
             color: var(--slate-300);
             min-height: 100vh;
@@ -107,6 +108,16 @@
             }
         }
 
+        header a{
+            font-weight: 300;
+            text-decoration: none;
+            color: rgba(255, 255, 255, 0.666);
+        }
+        
+        header a:hover{
+            color: rgba(255, 255, 255, 0.9);
+        }
+
         h1 {
             font-size: 2.5rem;
             font-weight: 800;
@@ -123,6 +134,7 @@
         }
 
         .glass-card {
+            position: relative;
             background: var(--glass-bg);
             backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
@@ -130,9 +142,33 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .glass-card:hover {
-            border-color: rgba(139, 92, 246, 0.4);
+        .glass-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            border: 1px solid rgba(139, 92, 246, 0.4);
             box-shadow: 0 8px 32px rgba(139, 92, 246, 0.15);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 1;
+            transition: opacity 0.3s;
+        }
+
+        .glass-card:hover::after {
+            animation: flicker 1s infinite;
+        }
+
+        @keyframes flicker {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
         }
 
         .upload-section {
@@ -684,6 +720,126 @@
                 flex-direction: column;
                 align-items: stretch;
             }
+
+            .delete-btn {
+                padding: 0.5rem;
+            }
+
+            .tab-btn {
+                padding: 0.75rem 1.25rem;
+            }
+        }
+
+        .tabs-container {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+
+        .tab-btn {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--slate-300);
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+        }
+
+        .tab-btn.active {
+            background: var(--purple-600);
+            color: white;
+            font-weight: bold;
+            border-color: var(--purple-500);
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            color: var(--slate-400);
+            font-size: 0.875rem;
+        }
+
+        .toggle-checkbox {
+            appearance: none;
+            width: 36px;
+            height: 20px;
+            background: var(--slate-700);
+            border-radius: 10px;
+            position: relative;
+            transition: background-color 0.2s;
+        }
+
+        .toggle-checkbox::before {
+            content: '';
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle-checkbox:checked {
+            background: var(--purple-600);
+        }
+
+        .toggle-checkbox:checked::before {
+            transform: translateX(16px);
+        }
+
+        .template-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--glass-bg);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--glass-border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .template-card:hover {
+            border-color: var(--amber-500);
+        }
+
+        .delete-template-btn {
+            color: var(--slate-500);
+            background-color: transparent;
+            border-radius: 0.8rem;
+            padding: 0 2px;
+            font-size: 1.2rem;
+        }
+
+        .delete-template-btn:hover {
+            color: var(--red-500);
+        }
+
+        @media (max-width: 768px) {
+            .glass-card {
+                backdrop-filter: none;
+                background: var(--glass-bg);
+            }
+
+            body::before {
+                display: none;
+            }
+
+            .progress-fill::after {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -691,7 +847,8 @@
 <body>
     <div class="container">
         <header>
-            <h1><span class="highlight">Notifi</span>mers</h1>
+            <h1><span class="highlight">Time</span>weaver</h1>
+            <h4><a href="./what-is-time-weaver.html">who am i?</a></h4>
         </header>
 
         <div class="upload-section glass-card" style="padding: 1rem;">
@@ -710,10 +867,16 @@
 
         <section style="margin-bottom: 2rem;">
             <div class="section-header">
-                <h2 class="section-title">Active Timers</h2>
+                <!-- <h2 class="section-title">Active Timers</h2> -->
+                <label class="toggle-switch">
+                    <span>Show End Time</span>
+                    <input type="checkbox" id="end-time-toggle" class="toggle-checkbox">
+                </label>
                 <button id="clear-finished-btn" class="clear-btn" title="Remove all finished timers">Clear
                     Finished</button>
             </div>
+
+            <div id="tabs-container" class="tabs-container"></div>
 
             <div id="bulk-actions" class="bulk-actions glass-card hidden">
                 <span id="selection-count" class="selection-count"></span>
@@ -748,25 +911,39 @@
             <div id="timers" class="timers-grid"></div>
         </section>
 
-        <div class="quick-timers">
+        <section style="margin-bottom: 2rem;">
+            <div class="section-header">
+                <h2 class="section-title">Templates</h2>
+            </div>
+            <div id="templates-container" class="timers-grid" style="grid-template-columns: 1fr;"></div>
+        </section>
+
+        <!-- <div class="quick-timers">
             <button class="quick-btn" data-name="Pets 🐇" data-duration="2d0h25m">🐇</button>
             <button class="quick-btn" data-name="LabUp 🧪" data-duration="3d0h5m">🧪</button>
             <button class="quick-btn" data-name="ApprenticeB ⚒️" data-duration="0d5h25m">⚒️</button>
-        </div>
+        </div> -->
     </div>
 
     <div class="input-section">
         <div class="input-container">
             <form id="add-timer-form" class="input-form">
-                <div class="input-wrapper">
-                    <input type="text" id="name-input" class="input" placeholder="What are you timing?" required
-                        autocomplete="off" />
-                    <button type="button" id="clear-name-btn" class="input-btn hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="icon" viewBox="0 0 20 20">
-                            <path
-                                d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                        </svg>
-                    </button>
+                <div class="input-row" style="gap: 1rem;">
+                    <div class="input-wrapper" style="flex: 1;">
+                        <input type="text" id="name-input" class="input" placeholder="What are you timing?" required
+                            autocomplete="off" />
+                        <button type="button" id="clear-name-btn" class="input-btn hidden">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="icon"
+                                viewBox="0 0 20 20">
+                                <path
+                                    d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="input-wrapper" style="width: 150px;">
+                        <input type="text" id="category-input" class="input" placeholder="Category"
+                            autocomplete="off" />
+                    </div>
                 </div>
                 <div class="input-row">
                     <div class="input-wrapper" style="flex: 1;">
@@ -797,6 +974,14 @@
                         </svg>
                     </button>
                 </div>
+                <div style="display: flex; gap: 1.5rem; color: var(--slate-400); font-size: 0.875rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="repeat-toggle"> Repeat on finish
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="save-template-toggle"> Save as Template
+                    </label>
+                </div>
             </form>
             <div id="picker-container" class="picker-wrapper glass-card hidden">
                 <div class="picker-column">
@@ -814,7 +999,7 @@
             </div>
         </div>
     </div>
-    <script src="/static/app.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>
