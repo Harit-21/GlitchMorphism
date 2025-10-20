@@ -143,6 +143,9 @@ def parse_duration(s: str) -> timedelta:
     s = s.strip().lower()
     s = s.replace('-', ' ').replace(',', ' ').replace('.', ' ') # Handles '1d.7H'
     s = s.replace('н', 'h')
+    s = re.sub(r'l([dhm])', r'1\1', s)       # l -> 1 (e.g., 'ld' -> '1d')
+    s = re.sub(r's([dhm])', r'5\1', s)       # s -> 5 (e.g., 'sd' -> '5d')
+    s = re.sub(r'o([dhm])', r'0\1', s)       # o -> 0 (e.g., 'od' -> '0d')
     if s.isdigit(): 
         return timedelta(minutes=int(s))
     
@@ -212,7 +215,7 @@ def parse_ocr_text_and_create_timers(text_annotations, db: Session):
 
         name = " ".join(name_parts).strip()
         duration_str = " ".join(duration_parts).strip()
-        duration_str = re.sub(r'S([dhm])', r'5\1', duration_str, flags=re.IGNORECASE)
+        # duration_str = re.sub(r'S([dhm])', r'5\1', duration_str, flags=re.IGNORECASE)
 
         if name and any(c in duration_str.lower() for c in "dhm"):
             print(f"OCR Found: Name='{name}', Duration='{duration_str}'")
